@@ -6,6 +6,7 @@ import type {
   PlanMode,
   PlayerId,
   PlayerState,
+  QueuedStrike,
   Strike,
   StructureKind,
 } from './types'
@@ -17,7 +18,10 @@ export type Action =
   | { type: 'selectSource'; id: string | null }
   | { type: 'placeStructure'; col: number; row: number }
   | { type: 'removeStructure'; id: string }
-  | { type: 'launchStrike'; col: number; row: number }
+  | { type: 'queueStrike'; col: number; row: number }
+  | { type: 'unqueueStrike'; id: string }
+  | { type: 'commitStrikes' }
+  | { type: 'resolveNext' }
   | { type: 'endTurn' }
   | { type: 'confirmPass' }
   | { type: 'beginTurn' }
@@ -46,6 +50,7 @@ export function initialState(): MatchState {
     selectedKind: 'airfield',
     selectedSourceId: null,
     players: { p1: newPlayer('p1', 'Player 1'), p2: newPlayer('p2', 'Player 2') },
+    queued: [],
     log: [],
     winner: null,
   }
@@ -128,11 +133,80 @@ export function reducer(state: MatchState, action: Action): MatchState {
       }
     }
 
-    case 'launchStrike':
-      return resolveStrike(state, action.col, action.row)
+    case 'queueStrike': {
+      const me = state.players[state.activePlayer]
+      const source = me.structures.find((s) => s.id === state.selectedSourceId)
+      if (!source) return state
+      if (me.actionPoints < COMBAT.attackCost) return state
+      if (!isInRange(source, action.col, action.row)) return state
+      // One target per cell — a second click is a mistake, not a double strike.
+      if (state.queued.some((q) => q.col === action.col && q.row === action.row))
+        return state
 
-    case 'endTurn':
-      return { ...state, phase: 'pass', selectedSourceId: null }
+      return {
+        ...state,
+        queued: [
+          ...state.queued,
+          {
+            id: `q${nextId++}`,
+            sourceId: source.id,
+            col: action.col,
+            row: action.row,
+          },
+        ],
+        players: {
+          ...state.players,
+          [me.id]: { ...me, actionPoints: me.actionPoints - COMBAT.attackCost },
+        },
+      }
+    }
+
+    case 'unqueueStrike': {
+      const order = state.queued.find((q) => q.id === action.id)
+      if (!order) return state
+      const me = state.players[state.activePlayer]
+      return {
+        ...state,
+        queued: state.queued.filter((q) => q.id !== action.id),
+        players: {
+          ...state.players,
+          [me.id]: { ...me, actionPoints: me.actionPoints + COMBAT.attackCost },
+        },
+      }
+    }
+
+    case 'commitStrikes':
+      if (state.queued.length === 0) return state
+      return { ...state, phase: 'resolving' }
+
+    case 'resolveNext': {
+      const [next, ...rest] = state.queued
+      if (!next) return { ...state, phase: 'planning' }
+      const resolved = resolveStrike(state, next)
+      return {
+        ...resolved,
+        queued: rest,
+        // Hold on the resolving screen until the last strike has landed.
+        phase:
+          resolved.phase === 'gameover'
+            ? 'gameover'
+            : rest.length > 0
+              ? 'resolving'
+              : 'planning',
+      }
+    }
+
+    case 'endTurn': {
+      // Unfired orders are abandoned; their action points die with the turn.
+      const me = state.players[state.activePlayer]
+      return {
+        ...state,
+        phase: 'pass',
+        selectedSourceId: null,
+        queued: [],
+        players: { ...state.players, [me.id]: { ...me, actionPoints: 0 } },
+      }
+    }
 
     case 'confirmPass': {
       // Player 2 finishing their turn closes out the round.
@@ -146,6 +220,7 @@ export function reducer(state: MatchState, action: Action): MatchState {
         view: 'own',
         mode: 'build',
         selectedSourceId: null,
+        queued: [],
         turn: roundComplete ? state.turn + 1 : state.turn,
         // Keep what was fired AT the incoming player so they can be briefed on
         // it; drop their own strikes, which they already watched resolve.
@@ -170,19 +245,15 @@ export function reducer(state: MatchState, action: Action): MatchState {
   }
 }
 
-function resolveStrike(
-  state: MatchState,
-  targetCol: number,
-  targetRow: number,
-): MatchState {
+function resolveStrike(state: MatchState, order: QueuedStrike): MatchState {
+  const { col: targetCol, row: targetRow } = order
   const me = state.players[state.activePlayer]
   const enemyId = opponentOf(state.activePlayer)
   const enemy = state.players[enemyId]
 
-  const source = me.structures.find((s) => s.id === state.selectedSourceId)
+  // The launching airfield may have been destroyed since the order was given.
+  const source = me.structures.find((s) => s.id === order.sourceId)
   if (!source) return state
-  if (me.actionPoints < COMBAT.attackCost) return state
-  if (!isInRange(source, targetCol, targetRow)) return state
 
   const from = attackerPoint(source.col, source.row)
   const to = defenderPoint(targetCol, targetRow)
@@ -243,11 +314,8 @@ function resolveStrike(
     }
   }
 
-  const meNext = {
-    ...me,
-    actionPoints: me.actionPoints - COMBAT.attackCost,
-    known: knowledge,
-  }
+  // Action points were already spent when the target was marked.
+  const meNext = { ...me, known: knowledge }
 
   const players = { ...state.players, [me.id]: meNext, [enemyId]: enemyNext }
   const defeated =

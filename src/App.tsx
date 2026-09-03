@@ -1,12 +1,15 @@
-import { useMemo, useReducer } from 'react'
+import { useEffect, useMemo, useReducer } from 'react'
 import { AttackPanel } from './components/AttackPanel'
 import { BriefingScreen } from './components/BriefingScreen'
 import { GameOverScreen } from './components/GameOverScreen'
-import { MapGrid } from './components/MapGrid'
+import { MapStack } from './components/MapStack'
 import { PassScreen } from './components/PassScreen'
 import { StructurePalette } from './components/StructurePalette'
 import { isInRange } from './game/combat'
 import { COLS, COMBAT, ROWS, structureDef } from './game/constants'
+
+/** Beat between strikes during resolution, so each one reads as its own event. */
+const STRIKE_INTERVAL_MS = 850
 import { incomingSince, initialState, opponentOf, reducer } from './game/state'
 
 export default function App() {
@@ -16,6 +19,17 @@ export default function App() {
   const enemy = state.players[opponentOf(state.activePlayer)]
   const attacking = state.mode === 'attack'
   const viewingEnemy = state.view === 'enemy'
+  const resolving = state.phase === 'resolving'
+
+  // Drain the committed queue one strike at a time.
+  useEffect(() => {
+    if (state.phase !== 'resolving') return
+    const timer = setTimeout(
+      () => dispatch({ type: 'resolveNext' }),
+      STRIKE_INTERVAL_MS,
+    )
+    return () => clearTimeout(timer)
+  }, [state.phase, state.queued.length])
 
   const airfields = useMemo(
     () => me.structures.filter((s) => s.kind === 'airfield'),
@@ -37,6 +51,9 @@ export default function App() {
 
   /** Strikes this player launched this turn, drawn on the enemy map. */
   const outgoing = state.log.filter((s) => s.attacker === me.id)
+
+  const structureAtOwnCell = (col: number, row: number) =>
+    me.structures.find((s) => s.col === col && s.row === row)
 
   if (state.phase === 'gameover' && state.winner) {
     return (
@@ -99,7 +116,8 @@ export default function App() {
           <button
             type="button"
             onClick={() => dispatch({ type: 'endTurn' })}
-            className="rounded border border-slate-500 bg-slate-800 px-4 py-2 text-xs font-medium text-slate-100 transition hover:border-slate-300 hover:bg-slate-700"
+            disabled={resolving}
+            className="rounded border border-slate-500 bg-slate-800 px-4 py-2 text-xs font-medium text-slate-100 transition hover:border-slate-300 hover:bg-slate-700 disabled:opacity-40"
           >
             End Turn
           </button>
@@ -112,7 +130,11 @@ export default function App() {
             airfields={airfields}
             selectedSourceId={state.selectedSourceId}
             actionPoints={me.actionPoints}
+            queued={state.queued}
+            resolving={resolving}
             onSelectSource={(id) => dispatch({ type: 'selectSource', id })}
+            onRemoveTarget={(id) => dispatch({ type: 'unqueueStrike', id })}
+            onCommit={() => dispatch({ type: 'commitStrikes' })}
           />
         ) : (
           <StructurePalette
@@ -128,40 +150,45 @@ export default function App() {
             <Tab
               active={!attacking}
               onClick={() => dispatch({ type: 'setMode', mode: 'build' })}
+              disabled={resolving}
             >
               Build
             </Tab>
             <Tab
               active={attacking}
               onClick={() => dispatch({ type: 'setMode', mode: 'attack' })}
+              disabled={resolving}
             >
               Attack
             </Tab>
           </div>
 
-          {attacking ? (
-            <MapGrid
-              mode="enemy"
-              known={me.known}
-              reachable={reachable}
-              paths={outgoing}
-              interactive={!!source && me.actionPoints >= COMBAT.attackCost}
-              onCellClick={(col, row) =>
-                dispatch({ type: 'launchStrike', col, row })
-              }
-            />
-          ) : (
-            <MapGrid
-              mode="own"
-              structures={me.structures}
-              ruins={me.ruins}
-              previewCode={structureDef(state.selectedKind).code}
-              onCellClick={(col, row) =>
-                dispatch({ type: 'placeStructure', col, row })
-              }
-              onStructureClick={(id) => dispatch({ type: 'removeStructure', id })}
-            />
-          )}
+          <MapStack
+            mode={state.mode}
+            own={{ structures: me.structures, ruins: me.ruins }}
+            enemyKnown={me.known}
+            reachable={attacking ? reachable : null}
+            queued={state.queued}
+            strikes={outgoing}
+            selectedSourceId={state.selectedSourceId}
+            previewCode={attacking ? null : structureDef(state.selectedKind).code}
+            interactive={!resolving}
+            onEnemyCellClick={(col, row) => {
+              if (!attacking) return
+              const marked = state.queued.find(
+                (q) => q.col === col && q.row === row,
+              )
+              if (marked) dispatch({ type: 'unqueueStrike', id: marked.id })
+              else dispatch({ type: 'queueStrike', col, row })
+            }}
+            onOwnCellClick={(col, row) => {
+              if (attacking) return
+              const existing = structureAtOwnCell(col, row)
+              if (existing)
+                dispatch({ type: 'removeStructure', id: existing.id })
+              else dispatch({ type: 'placeStructure', col, row })
+            }}
+          />
         </div>
 
         <aside className="w-56 shrink-0 space-y-3">
@@ -173,7 +200,8 @@ export default function App() {
               <Row label="Structures" value={String(me.structures.length)} />
               <Row label="Airfields" value={String(airfields.length)} />
               <Row label="Ruins" value={String(me.ruins.length)} />
-              <Row label="Strikes this turn" value={String(outgoing.length)} />
+              <Row label="Targets marked" value={String(state.queued.length)} />
+              <Row label="Strikes flown" value={String(outgoing.length)} />
             </dl>
           </div>
 
@@ -220,17 +248,20 @@ function Readout({ label, value }: { label: string; value: string }) {
 function Tab({
   active,
   onClick,
+  disabled,
   children,
 }: {
   active: boolean
   onClick: () => void
+  disabled?: boolean
   children: React.ReactNode
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`rounded px-4 py-1.5 text-xs transition ${
+      disabled={disabled}
+      className={`rounded px-4 py-1.5 text-xs transition disabled:opacity-40 ${
         active ? 'bg-slate-700 text-slate-100' : 'text-slate-500 hover:text-slate-300'
       }`}
     >

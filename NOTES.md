@@ -5,6 +5,61 @@ Companion to `Battleship_2.0_GDD.docx` and `Battleship_2.0_Prototype_Roadmap.doc
 
 ---
 
+## Session 3 — UX pass between M2 and M3 (stacked maps, strike queue)
+
+Driven by playtest feedback. Sits between M2 and M3 deliberately: recon in M3
+draws flight paths across the border, so restacking the maps first avoids
+building that twice.
+
+### Decisions taken this session
+- **Timeline / next-phase UI deferred to M3.** A build/recon/attack sequence is
+  what makes a phase model worth having; two modes do not need one.
+- **Strikes resolve one at a time with a beat between them** (850ms), rather
+  than all at once. Previews M8's cinematic resolution.
+- **Attack mode keeps part of your own map visible**, with explicit
+  "↑ Front line" and "↓ Your map" buttons to move between halves.
+
+### What changed
+- **Maps are stacked, not tabbed.** Enemy territory sits above yours, mirrored
+  so its close-range zone meets the shared border. Row 1 is nearest the seam on
+  both halves, so row numbers count outward in both directions. A strike now
+  draws as one continuous line from the launching airfield across the border to
+  its target, which is what the model was doing all along.
+- **Plan then commit.** Clicking the enemy map marks a numbered target and
+  reserves its action points; clicking a marked cell unmarks it and refunds.
+  Nothing flies until Go. This matches GDD §3's action phase, and the queue is
+  the same object M4's simultaneous submission needs.
+- Flight paths and impact markers are colour-coded by outcome: grey miss,
+  orange damaged, red destroyed, blue dashed for intercepted.
+- Structure HP is labelled `2/2 HP` and the action-point cost moved onto the
+  action, so two unrelated numbers no longer sit side by side unlabelled.
+- Each half only accepts clicks in its own mode.
+
+### Bugs found and fixed
+- **Flight paths were invisible, not subtle.** `vector-effect: non-scaling-stroke`
+  makes stroke width mean screen pixels, so `strokeWidth={0.08}` asked for a
+  line 0.08px wide. Removed the vector-effect and set widths in grid units.
+- In build mode the enemy half was still live: clickable buttons that silently
+  did nothing. Each half is now gated by mode.
+- Initial scroll positioning measured the seam before layout, parking the view
+  at the top of the stack. Now measured in a layout effect against the
+  container's own rect rather than `offsetParent`.
+
+### Environment note worth remembering
+Neither `scrollTo({behavior:'smooth'})` nor CSS `scroll-behavior: smooth` is
+reliable in every embedded browser — with the CSS property applied, even a
+direct `scrollTop` assignment was swallowed. The easing is now done by hand in
+`MapStack.scrollTo`. That function also jumps straight to its destination when
+`document.hidden`, because animation frames are suspended in a background tab
+and the view would otherwise never position itself.
+
+### Where to pick up
+Milestone 3: recon flight paths (reuse `combat.ts` geometry and the stacked
+overlay), fog lifting in scanned areas, civilian cities, sanctions, and the
+casualty auto-loss threshold. The phase/timeline UI belongs here too.
+
+---
+
 ## Session 2 — Milestone 2 complete (attack, defend, basic combat)
 
 ### Decisions taken this session

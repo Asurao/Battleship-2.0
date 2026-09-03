@@ -72,13 +72,22 @@ export interface PlayerState {
   hasBuiltAirfield: boolean
 }
 
+/** A target marked during planning, not yet fired. */
+export interface QueuedStrike {
+  id: string
+  sourceId: string
+  col: number
+  row: number
+}
+
 /**
- * `briefing` — what happened to you since your last turn.
- * `planning` — build and attack.
- * `pass`     — hand-off screen.
- * `gameover` — a winner has been declared.
+ * `briefing`  — what happened to you since your last turn.
+ * `planning`  — build, and mark targets.
+ * `resolving` — the committed queue is flying, one strike at a time.
+ * `pass`      — hand-off screen.
+ * `gameover`  — a winner has been declared.
  */
-export type Phase = 'briefing' | 'planning' | 'pass' | 'gameover'
+export type Phase = 'briefing' | 'planning' | 'resolving' | 'pass' | 'gameover'
 
 /** Which map the active player is currently looking at. */
 export type MapView = 'own' | 'enemy'
@@ -96,6 +105,8 @@ export interface MatchState {
   /** Airfield the next strike launches from. */
   selectedSourceId: string | null
   players: Record<PlayerId, PlayerState>
+  /** Targets marked but not yet fired. Action points are reserved on queueing. */
+  queued: QueuedStrike[]
   /** Strikes resolved this turn, newest last. Drives briefings and overlays. */
   log: Strike[]
   winner: PlayerId | null
