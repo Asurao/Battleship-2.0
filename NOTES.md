@@ -5,6 +5,68 @@ Companion to `Battleship_2.0_GDD.docx` and `Battleship_2.0_Prototype_Roadmap.doc
 
 ---
 
+## Session 2 — Milestone 2 complete (attack, defend, basic combat)
+
+### Decisions taken this session
+- **Sequential turns, not simultaneous.** Simultaneous resolution can't be
+  watched together without leaking positions, so it needs 4 device hand-offs per
+  turn against sequential's 2. The roadmap also lists simultaneous planning as an
+  M4 deliverable, so building it now would have been M4 work done early.
+- **No alternating first player.** P1 leads every turn; first-strike advantage
+  accepted as a known distortion this early.
+- Attacks launch from a specific airfield and fly a real path. Confirmed as
+  central to the game, not a detail.
+
+### What was built
+- Attacks: choose an airfield, then a target. Cost 2 AP from a flat 6/turn.
+- **Range from geometry, not rules.** The two grids face each other across a
+  border at y = 0 (`game/combat.ts`). A bomber's reach is plain Euclidean
+  distance, which reproduces GDD §5's zone restrictions on its own:
+  a close-range airfield reaches 130 enemy cells down to enemy row 12; a
+  mid-zone one reaches 34 cells and stops at enemy row 4; a long-range one
+  cannot reach at all.
+- Anti-air screens a corridor: any battery within 3 cells of the flight path
+  rolls 35% to down the strike, nearest-to-border first. Batteries placed
+  forward therefore protect everything behind them.
+- Structure HP (airfield 2, anti-air 2, command 3), ruins markers, and building
+  over ruins is blocked.
+- Attacker's picture of the enemy grid accumulates: confirmed empty, damaged,
+  destroyed. Intercepted strikes teach the attacker nothing.
+- Intelligence briefing at the start of a turn listing what hit you.
+- Win condition: destroy every enemy airfield.
+
+### Bugs found and fixed during testing
+- Hand-off kept the wrong half of the strike log, so briefings were always
+  empty.
+- Briefing and pass screen both dispatched `confirmPass`, so acknowledging a
+  briefing advanced the turn twice and handed control back to the wrong player.
+
+### The thing to watch in playtest
+Blind search is *slow*, and the numbers say so. A forward airfield can reach
+~130 cells; a 1x1 structure in that space is found in ~65 shots on average, or
+about 22 turns at 3 shots per turn. Expect long, inconclusive matches. That is
+the finding M2 exists to produce — it is the argument for recon in M3 — but it
+means a match may not reach a natural end. There is no turn-limit failsafe yet
+(roadmap puts it in M7). If testing stalls, note the turn count and stop; that
+number is the data.
+
+Two levers if it is unbearable: raise `COMBAT.actionPointsPerTurn`, or pull the
+turn-30 failsafe forward from M7.
+
+### Where to pick up
+Milestone 3: recon flight paths, fog lifting in scanned areas, civilian cities,
+sanctions, and the casualty auto-loss threshold.
+
+### Architecture notes added this session
+- `src/game/combat.ts` — all strike geometry. Stacked coordinate space with the
+  border at y = 0; the defender's half shares the grid's own coordinates, so
+  flight paths draw into the SVG overlay with no conversion. Recon paths in M3
+  should reuse this.
+- `COMBAT` in `constants.ts` — every tunable number in one object. These are the
+  hooks the M5 tech tree raises and lowers, and the M8 balance pass turns.
+
+---
+
 ## Session 1 — Milestone 1 complete (grid, placement, fog of war)
 
 ### What was built

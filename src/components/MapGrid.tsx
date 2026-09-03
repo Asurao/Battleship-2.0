@@ -1,5 +1,6 @@
+import { borderCrossing } from '../game/combat'
 import { COLS, COL_LABELS, ROWS, ZONES, structureDef, zoneForRow } from '../game/constants'
-import type { Structure, StructureKind } from '../game/types'
+import type { KnownCell, Ruin, Strike, Structure } from '../game/types'
 
 const ZONE_TINT: Record<string, string> = {
   close: 'bg-rose-500/[0.07]',
@@ -7,27 +8,57 @@ const ZONE_TINT: Record<string, string> = {
   long: 'bg-emerald-500/[0.06]',
 }
 
+const KNOWLEDGE_STYLE: Record<KnownCell['knowledge'], string> = {
+  empty: 'bg-slate-700/40 text-slate-500',
+  struck: 'bg-orange-500/30 text-orange-200 border border-orange-400/60',
+  destroyed: 'bg-rose-600/30 text-rose-200 border border-rose-400/60',
+}
+
+const KNOWLEDGE_MARK: Record<KnownCell['knowledge'], string> = {
+  empty: '·',
+  struck: '✳',
+  destroyed: '✕',
+}
+
 interface MapGridProps {
-  structures: Structure[]
-  /** Enemy territory in M1 is solid fog — nothing is rendered through it. */
-  fogged: boolean
-  selectedKind: StructureKind
-  onPlace: (col: number, row: number) => void
-  onRemove: (id: string) => void
+  /** `own` shows your assets; `enemy` shows only what you have learned. */
+  mode: 'own' | 'enemy'
+  structures?: Structure[]
+  ruins?: Ruin[]
+  known?: KnownCell[]
+  /** "col,row" keys a selected airfield can actually reach. */
+  reachable?: Set<string> | null
+  /** Strikes to draw as flight paths over the grid. */
+  paths?: Strike[]
+  selectedSourceId?: string | null
+  /** Ghost stamp shown on hover while building. */
+  previewCode?: string | null
+  interactive?: boolean
+  onCellClick?: (col: number, row: number) => void
+  onStructureClick?: (id: string) => void
 }
 
 export function MapGrid({
-  structures,
-  fogged,
-  selectedKind,
-  onPlace,
-  onRemove,
+  mode,
+  structures = [],
+  ruins = [],
+  known = [],
+  reachable = null,
+  paths = [],
+  selectedSourceId = null,
+  previewCode = null,
+  interactive = true,
+  onCellClick,
+  onStructureClick,
 }: MapGridProps) {
-  const byCell = new Map<string, Structure>()
-  if (!fogged) {
-    for (const s of structures) byCell.set(`${s.col},${s.row}`, s)
-  }
-  const preview = structureDef(selectedKind)
+  const structureAt = new Map<string, Structure>()
+  for (const s of structures) structureAt.set(`${s.col},${s.row}`, s)
+  const ruinAt = new Map<string, Ruin>()
+  for (const r of ruins) ruinAt.set(`${r.col},${r.row}`, r)
+  const knownAt = new Map<string, KnownCell>()
+  for (const k of known) knownAt.set(`${k.col},${k.row}`, k)
+
+  const fogged = mode === 'enemy'
 
   return (
     <div className="flex flex-col items-center gap-2">
@@ -36,8 +67,10 @@ export function MapGrid({
       </div>
 
       <div className="flex gap-1.5">
-        {/* Row numbers */}
-        <div className="grid w-6 shrink-0" style={{ gridTemplateRows: `repeat(${ROWS}, minmax(0, 1fr))` }}>
+        <div
+          className="grid w-6 shrink-0"
+          style={{ gridTemplateRows: `repeat(${ROWS}, minmax(0, 1fr))` }}
+        >
           {Array.from({ length: ROWS }, (_, row) => (
             <div
               key={row}
@@ -49,94 +82,131 @@ export function MapGrid({
         </div>
 
         <div className="flex flex-col gap-1">
-          {/* Column letters */}
           <div
             className="grid gap-px"
             style={{ gridTemplateColumns: `repeat(${COLS}, minmax(0, 1fr))` }}
           >
             {COL_LABELS.map((label) => (
-              <div
-                key={label}
-                className="text-center font-mono text-[10px] text-slate-500"
-              >
+              <div key={label} className="text-center font-mono text-[10px] text-slate-500">
                 {label}
               </div>
             ))}
           </div>
 
-          {/* The grid itself */}
           <div className="relative">
             <div
               className="grid gap-px rounded-sm bg-slate-800/60 p-px"
               style={{
                 gridTemplateColumns: `repeat(${COLS}, minmax(0, 1fr))`,
                 // 12x16 cells => 3:4 aspect. Cap by height so all 16 rows stay on screen.
-                width: 'min(42vw, 30rem, calc((100vh - 11rem) * 0.75))',
+                width: 'min(42vw, 30rem, calc((100vh - 13rem) * 0.75))',
               }}
             >
               {Array.from({ length: ROWS }, (_, row) =>
                 Array.from({ length: COLS }, (_, col) => {
+                  const key = `${col},${row}`
                   const zone = zoneForRow(row)
-                  const existing = byCell.get(`${col},${row}`)
-                  const zoneBoundary =
-                    row === 4 || row === 12 ? 'border-t-2 border-t-slate-500/50' : ''
+                  const edge = row === 4 || row === 12 ? 'border-t-2 border-t-slate-500/50' : ''
+                  const label = `${COL_LABELS[col]}${row + 1}`
 
                   if (fogged) {
+                    const seen = knownAt.get(key)
+                    const inRange = reachable?.has(key) ?? false
+                    const dimmed = reachable && !inRange
                     return (
-                      <div
-                        key={`${col},${row}`}
-                        className={`aspect-square bg-slate-800/90 ${zoneBoundary}`}
-                      />
+                      <button
+                        key={key}
+                        type="button"
+                        disabled={!interactive || !!dimmed}
+                        onClick={() => onCellClick?.(col, row)}
+                        title={
+                          dimmed
+                            ? `${label} — out of range`
+                            : `${label}${seen ? ` — ${seen.knowledge}` : ''}`
+                        }
+                        className={`aspect-square font-mono text-[9px] transition ${edge} ${
+                          seen ? KNOWLEDGE_STYLE[seen.knowledge] : 'bg-slate-800/90'
+                        } ${
+                          dimmed
+                            ? 'opacity-20'
+                            : inRange
+                              ? 'bg-sky-500/10 ring-1 ring-inset ring-sky-400/40 hover:bg-sky-500/50'
+                              : ''
+                        }`}
+                      >
+                        {seen ? KNOWLEDGE_MARK[seen.knowledge] : ''}
+                      </button>
                     )
                   }
 
-                  if (existing) {
-                    const def = structureDef(existing.kind)
+                  const structure = structureAt.get(key)
+                  if (structure) {
+                    const def = structureDef(structure.kind)
+                    const damaged = structure.hp < structure.maxHp
+                    const isSource = structure.id === selectedSourceId
                     return (
                       <button
-                        key={`${col},${row}`}
+                        key={key}
                         type="button"
-                        onClick={() => onRemove(existing.id)}
-                        title={`${def.label} at ${COL_LABELS[col]}${row + 1} — click to remove`}
-                        className={`group aspect-square border font-mono text-[9px] font-semibold transition ${def.tone} ${zoneBoundary} hover:brightness-150`}
+                        disabled={!interactive}
+                        onClick={() => onStructureClick?.(structure.id)}
+                        title={`${def.label} at ${label} — ${structure.hp}/${structure.maxHp} HP`}
+                        className={`relative aspect-square border font-mono text-[9px] font-semibold transition ${def.tone} ${edge} ${
+                          isSource ? 'ring-2 ring-inset ring-slate-100' : ''
+                        } ${interactive ? 'hover:brightness-150' : ''}`}
                       >
-                        <span className="group-hover:hidden">{def.code}</span>
-                        <span className="hidden text-rose-200 group-hover:inline">✕</span>
+                        {def.code}
+                        {damaged && (
+                          <span className="absolute inset-x-0.5 bottom-0.5 h-0.5 bg-slate-900/70">
+                            <span
+                              className="block h-full bg-rose-400"
+                              style={{ width: `${(structure.hp / structure.maxHp) * 100}%` }}
+                            />
+                          </span>
+                        )}
                       </button>
+                    )
+                  }
+
+                  const ruin = ruinAt.get(key)
+                  if (ruin) {
+                    return (
+                      <div
+                        key={key}
+                        title={`Ruins of ${structureDef(ruin.kind).label} at ${label}`}
+                        className={`flex aspect-square items-center justify-center bg-slate-700/50 font-mono text-[9px] text-slate-500 ${edge}`}
+                      >
+                        ▨
+                      </div>
                     )
                   }
 
                   return (
                     <button
-                      key={`${col},${row}`}
+                      key={key}
                       type="button"
-                      onClick={() => onPlace(col, row)}
-                      title={`${COL_LABELS[col]}${row + 1} — ${zone.label}`}
-                      className={`group aspect-square transition hover:bg-slate-600/60 ${ZONE_TINT[zone.id]} ${zoneBoundary}`}
+                      disabled={!interactive}
+                      onClick={() => onCellClick?.(col, row)}
+                      title={`${label} — ${zone.label}`}
+                      className={`group aspect-square transition ${ZONE_TINT[zone.id]} ${edge} ${
+                        interactive ? 'hover:bg-slate-600/60' : ''
+                      }`}
                     >
-                      <span className="hidden font-mono text-[9px] text-slate-300/70 group-hover:inline">
-                        {preview.code}
-                      </span>
+                      {previewCode && (
+                        <span className="hidden font-mono text-[9px] text-slate-300/70 group-hover:inline">
+                          {previewCode}
+                        </span>
+                      )}
                     </button>
                   )
                 }),
               )}
             </div>
 
-            {fogged && (
-              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1 text-center">
-                <div className="text-xs uppercase tracking-[0.35em] text-slate-400">
-                  No Intelligence
-                </div>
-                <div className="max-w-[16rem] text-[11px] leading-relaxed text-slate-500">
-                  Enemy territory is unobserved. Reconnaissance arrives in Milestone 3.
-                </div>
-              </div>
-            )}
+            <FlightPaths paths={paths} />
           </div>
         </div>
 
-        {/* Zone rail */}
         <div
           className="grid w-24 shrink-0 gap-px"
           style={{ gridTemplateRows: `repeat(${ROWS}, minmax(0, 1fr))` }}
@@ -150,13 +220,58 @@ export function MapGrid({
               <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-300">
                 {zone.label}
               </div>
-              <div className="mt-0.5 text-[9px] leading-snug text-slate-500">
-                {zone.blurb}
-              </div>
+              <div className="mt-0.5 text-[9px] leading-snug text-slate-500">{zone.blurb}</div>
             </div>
           ))}
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * Strike paths are stored in stacked space, where the defender's half already
+ * shares the grid's coordinates — so the defended leg draws straight into the
+ * SVG with no conversion.
+ */
+function FlightPaths({ paths }: { paths: Strike[] }) {
+  if (paths.length === 0) return null
+
+  return (
+    <svg
+      viewBox={`0 0 ${COLS} ${ROWS}`}
+      preserveAspectRatio="none"
+      className="pointer-events-none absolute inset-0 h-full w-full overflow-visible"
+    >
+      {paths.map((strike) => {
+        const entry = borderCrossing(strike.from, strike.to)
+        const end = strike.interceptedAt ?? strike.to
+        const downed = strike.outcome === 'intercepted'
+        return (
+          <g key={strike.id}>
+            <line
+              x1={entry.x}
+              y1={entry.y}
+              x2={end.x}
+              y2={end.y}
+              stroke={downed ? '#38bdf8' : '#fb7185'}
+              strokeWidth={0.08}
+              strokeDasharray={downed ? '0.3 0.2' : undefined}
+              vectorEffect="non-scaling-stroke"
+              opacity={0.9}
+            />
+            <circle
+              cx={end.x}
+              cy={end.y}
+              r={0.28}
+              fill="none"
+              stroke={downed ? '#38bdf8' : '#fb7185'}
+              strokeWidth={0.08}
+              vectorEffect="non-scaling-stroke"
+            />
+          </g>
+        )
+      })}
+    </svg>
   )
 }

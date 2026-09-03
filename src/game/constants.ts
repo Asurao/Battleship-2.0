@@ -90,6 +90,39 @@ export function structureDef(kind: StructureKind): StructureDef {
   return def
 }
 
+/**
+ * Combat tuning. Every number here is meant to be turned during the M8 balance
+ * pass, and these are the hooks the M5 tech tree will raise and lower.
+ */
+export const COMBAT = {
+  /** Flat per-turn action budget. The real economy arrives in M5. */
+  actionPointsPerTurn: 6,
+  /** GDD §11: a standard attack costs 2. */
+  attackCost: 2,
+  /** Damage one bomber run deals to whatever it lands on. */
+  strikeDamage: 1,
+  /**
+   * How far a basic bomber reaches, measured across the border in cell widths.
+   * Tuned so a close-range airfield strikes deep into enemy territory while a
+   * long-range one cannot reach at all — GDD §5's zone restrictions, emerging
+   * from geometry instead of a hard rule.
+   */
+  bomberRange: 12,
+  /** Radius, in cells, in which a battery may engage a passing strike. */
+  antiAirRadius: 3,
+  /** Chance a single battery downs a strike crossing its envelope. */
+  antiAirHitChance: 0.35,
+} as const
+
+export const STRUCTURE_HP: Record<StructureKind, number> = {
+  airfield: 2,
+  antiair: 2,
+  command: 3,
+}
+
+/** Structures that count toward the M2 win condition. */
+export const OFFENSIVE_KINDS: StructureKind[] = ['airfield']
+
 /** Spreadsheet-style labels so players can talk about coordinates out loud. */
 export const COL_LABELS = Array.from({ length: COLS }, (_, i) =>
   String.fromCharCode(65 + i),
