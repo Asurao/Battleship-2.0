@@ -1,5 +1,10 @@
 import { isInRange, rollInterception, attackerPoint, defenderPoint } from './combat'
-import { COMBAT, OFFENSIVE_KINDS, STRUCTURE_HP } from './constants'
+import {
+  COMBAT,
+  OFFENSIVE_KINDS,
+  REQUIRED_SETUP,
+  STRUCTURE_HP,
+} from './constants'
 import type {
   MapView,
   MatchState,
@@ -23,6 +28,7 @@ export type Action =
   | { type: 'commitStrikes' }
   | { type: 'resolveNext' }
   | { type: 'endTurn' }
+  | { type: 'finishSetup' }
   | { type: 'confirmPass' }
   | { type: 'beginTurn' }
   | { type: 'resetMatch' }
@@ -33,9 +39,11 @@ function newPlayer(id: PlayerId, name: string): PlayerState {
     name,
     structures: [],
     ruins: [],
+    craters: [],
     known: [],
     actionPoints: COMBAT.actionPointsPerTurn,
     hasBuiltAirfield: false,
+    setupDone: false,
   }
 }
 
@@ -43,13 +51,15 @@ export function initialState(): MatchState {
   return {
     turn: 1,
     activePlayer: 'p1',
-    // Nothing has happened yet, so the first player goes straight to planning.
-    phase: 'planning',
+    // Both sides field their starting structures before a shot is fired, so
+    // nobody spends turn 1 bombing an empty map.
+    phase: 'setup',
     view: 'own',
     mode: 'build',
     selectedKind: 'airfield',
     selectedSourceId: null,
     players: { p1: newPlayer('p1', 'Player 1'), p2: newPlayer('p2', 'Player 2') },
+    passOrigin: 'setup',
     queued: [],
     log: [],
     winner: null,
@@ -91,8 +101,13 @@ export function reducer(state: MatchState, action: Action): MatchState {
       const me = state.players[state.activePlayer]
       const blocked =
         me.structures.some((s) => s.col === action.col && s.row === action.row) ||
-        me.ruins.some((r) => r.col === action.col && r.row === action.row)
+        me.ruins.some((r) => r.col === action.col && r.row === action.row) ||
+        (COMBAT.cratersBlockBuilding &&
+          me.craters.some((c) => c.col === action.col && c.row === action.row))
       if (blocked) return state
+      // During setup a player fields one of each required structure, no more.
+      if (state.phase === 'setup' && !setupAllows(me, state.selectedKind))
+        return state
 
       const structure = {
         id: `s${nextId++}`,
@@ -196,12 +211,27 @@ export function reducer(state: MatchState, action: Action): MatchState {
       }
     }
 
+    case 'finishSetup': {
+      const me = state.players[state.activePlayer]
+      if (!setupComplete(me)) return state
+      return {
+        ...state,
+        phase: 'pass',
+        passOrigin: 'setup',
+        players: {
+          ...state.players,
+          [me.id]: { ...me, setupDone: true },
+        },
+      }
+    }
+
     case 'endTurn': {
       // Unfired orders are abandoned; their action points die with the turn.
       const me = state.players[state.activePlayer]
       return {
         ...state,
         phase: 'pass',
+        passOrigin: 'turn',
         selectedSourceId: null,
         queued: [],
         players: { ...state.players, [me.id]: { ...me, actionPoints: 0 } },
@@ -209,9 +239,23 @@ export function reducer(state: MatchState, action: Action): MatchState {
     }
 
     case 'confirmPass': {
+      const next = opponentOf(state.activePlayer)
+
+      // Still fielding starting forces: hand over and keep setting up.
+      if (state.passOrigin === 'setup') {
+        return {
+          ...state,
+          activePlayer: next,
+          phase: state.players[next].setupDone ? 'planning' : 'setup',
+          view: 'own',
+          mode: 'build',
+          selectedSourceId: null,
+          queued: [],
+        }
+      }
+
       // Player 2 finishing their turn closes out the round.
       const roundComplete = state.activePlayer === 'p2'
-      const next = opponentOf(state.activePlayer)
       const hasNews = state.log.some((s) => s.attacker !== next)
       return {
         ...state,
@@ -281,6 +325,10 @@ function resolveStrike(state: MatchState, order: QueuedStrike): MatchState {
     strike.interceptorId = interception.batteryId
     // An intercepted strike teaches the attacker nothing about the target cell.
   } else {
+    enemyNext = {
+      ...enemy,
+      craters: [...enemy.craters, { col: targetCol, row: targetRow }],
+    }
     const target = enemy.structures.find(
       (s) => s.col === targetCol && s.row === targetRow,
     )
@@ -293,7 +341,7 @@ function resolveStrike(state: MatchState, order: QueuedStrike): MatchState {
       if (hp <= 0) {
         strike.outcome = 'destroyed'
         enemyNext = {
-          ...enemy,
+          ...enemyNext,
           structures: enemy.structures.filter((s) => s.id !== target.id),
           ruins: [
             ...enemy.ruins,
@@ -304,7 +352,7 @@ function resolveStrike(state: MatchState, order: QueuedStrike): MatchState {
       } else {
         strike.outcome = 'hit'
         enemyNext = {
-          ...enemy,
+          ...enemyNext,
           structures: enemy.structures.map((s) =>
             s.id === target.id ? { ...s, hp } : s,
           ),
@@ -339,4 +387,22 @@ function rememberCell(
 ) {
   const rest = known.filter((k) => k.col !== col || k.row !== row)
   return [...rest, { col, row, knowledge }]
+}
+
+
+/** How many of a kind the setup allowance still permits. */
+function setupAllows(player: PlayerState, kind: StructureKind): boolean {
+  const allowed = REQUIRED_SETUP.filter((k) => k === kind).length
+  const placed = player.structures.filter((s) => s.kind === kind).length
+  return placed < allowed
+}
+
+export function setupRemaining(player: PlayerState): StructureKind[] {
+  return REQUIRED_SETUP.filter(
+    (kind) => !player.structures.some((s) => s.kind === kind),
+  )
+}
+
+export function setupComplete(player: PlayerState): boolean {
+  return setupRemaining(player).length === 0
 }

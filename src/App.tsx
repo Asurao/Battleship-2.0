@@ -4,22 +4,31 @@ import { BriefingScreen } from './components/BriefingScreen'
 import { GameOverScreen } from './components/GameOverScreen'
 import { MapStack } from './components/MapStack'
 import { PassScreen } from './components/PassScreen'
+import { SetupPanel } from './components/SetupPanel'
 import { StructurePalette } from './components/StructurePalette'
 import { isInRange } from './game/combat'
 import { COLS, COMBAT, ROWS, structureDef } from './game/constants'
 
 /** Beat between strikes during resolution, so each one reads as its own event. */
 const STRIKE_INTERVAL_MS = 850
-import { incomingSince, initialState, opponentOf, reducer } from './game/state'
+import {
+  incomingSince,
+  initialState,
+  opponentOf,
+  reducer,
+  setupRemaining,
+} from './game/state'
 
 export default function App() {
   const [state, dispatch] = useReducer(reducer, undefined, initialState)
 
   const me = state.players[state.activePlayer]
   const enemy = state.players[opponentOf(state.activePlayer)]
-  const attacking = state.mode === 'attack'
+  const attacking = state.mode === 'attack' && state.phase !== 'setup'
   const viewingEnemy = state.view === 'enemy'
   const resolving = state.phase === 'resolving'
+  const settingUp = state.phase === 'setup'
+  const remaining = setupRemaining(me)
 
   // Drain the committed queue one strike at a time.
   useEffect(() => {
@@ -75,6 +84,7 @@ export default function App() {
           fromName={me.name}
           toName={enemy.name}
           turn={state.turn}
+          setup={state.passOrigin === 'setup'}
           onContinue={() => dispatch({ type: 'confirmPass' })}
         />
       </div>
@@ -107,15 +117,21 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-5">
-          <Readout label="Turn" value={String(state.turn)} />
           <Readout
-            label="Action Points"
-            value={`${me.actionPoints} / ${COMBAT.actionPointsPerTurn}`}
+            label={settingUp ? 'Phase' : 'Turn'}
+            value={settingUp ? 'Deploy' : String(state.turn)}
           />
+          {!settingUp && (
+            <Readout
+              label="Action Points"
+              value={`${me.actionPoints} / ${COMBAT.actionPointsPerTurn}`}
+            />
+          )}
           <Readout label="Commanding" value={me.name} />
           <button
             type="button"
             onClick={() => dispatch({ type: 'endTurn' })}
+            hidden={settingUp}
             disabled={resolving}
             className="rounded border border-slate-500 bg-slate-800 px-4 py-2 text-xs font-medium text-slate-100 transition hover:border-slate-300 hover:bg-slate-700 disabled:opacity-40"
           >
@@ -125,7 +141,15 @@ export default function App() {
       </header>
 
       <main className="flex min-h-0 flex-1 items-start justify-center gap-8 overflow-auto px-6 py-5">
-        {attacking ? (
+        {settingUp ? (
+          <SetupPanel
+            player={me}
+            selected={state.selectedKind}
+            remaining={remaining}
+            onSelect={(kind) => dispatch({ type: 'selectKind', kind })}
+            onReady={() => dispatch({ type: 'finishSetup' })}
+          />
+        ) : attacking ? (
           <AttackPanel
             airfields={airfields}
             selectedSourceId={state.selectedSourceId}
@@ -146,7 +170,11 @@ export default function App() {
         )}
 
         <div className="flex flex-col items-center gap-3">
-          <div className="flex gap-1 rounded border border-slate-800 bg-slate-900 p-1">
+          <div
+            className={`flex gap-1 rounded border border-slate-800 bg-slate-900 p-1 ${
+              settingUp ? 'invisible' : ''
+            }`}
+          >
             <Tab
               active={!attacking}
               onClick={() => dispatch({ type: 'setMode', mode: 'build' })}
@@ -165,12 +193,17 @@ export default function App() {
 
           <MapStack
             mode={state.mode}
-            own={{ structures: me.structures, ruins: me.ruins }}
+            own={{
+              structures: me.structures,
+              ruins: me.ruins,
+              craters: me.craters,
+            }}
             enemyKnown={me.known}
             reachable={attacking ? reachable : null}
             queued={state.queued}
             strikes={outgoing}
             selectedSourceId={state.selectedSourceId}
+            selectedKind={state.selectedKind}
             previewCode={attacking ? null : structureDef(state.selectedKind).code}
             interactive={!resolving}
             onEnemyCellClick={(col, row) => {
@@ -200,6 +233,7 @@ export default function App() {
               <Row label="Structures" value={String(me.structures.length)} />
               <Row label="Airfields" value={String(airfields.length)} />
               <Row label="Ruins" value={String(me.ruins.length)} />
+              <Row label="Craters" value={String(me.craters.length)} />
               <Row label="Targets marked" value={String(state.queued.length)} />
               <Row label="Strikes flown" value={String(outgoing.length)} />
             </dl>

@@ -5,6 +5,73 @@ Companion to `Battleship_2.0_GDD.docx` and `Battleship_2.0_Prototype_Roadmap.doc
 
 ---
 
+## Session 4 — Setup phase and map legibility
+
+Playtest feedback again. Still pre-M3.
+
+### Decisions taken this session
+- **Deployment phase before turn 1.** Each player fields exactly one airfield,
+  one anti-air battery and one command centre before any shot is fired. GDD §16
+  already specified this; we had skipped it. The free-choice extras it also
+  mentions are deliberately left out until the M5 economy prices them.
+- **Anti-air envelopes show on hover only**, including while choosing where to
+  place one. Always-on gets noisy once several batteries overlap.
+- **Stale intel stays stale.** A cell you cleared five turns ago may not be
+  clear now. This reinforces the recon pillar: intelligence is maintenance, not
+  a one-time sweep.
+- **Craters recorded but not blocking, behind a switch.** See below.
+
+### Why the deployment phase mattered more than it looked
+P1 firing into an empty map on turn 1 did not merely waste action points — those
+misses were recorded as *confirmed empty*, and P2 then built in exactly those
+cells. P1 was poisoning their own intel with false negatives that would never
+correct. Deploying both sides first removes the turn-1 case, and it also
+narrows the first-strike advantage we accepted in session 2, since both players
+now enter turn 1 with equal forces.
+
+### The crater idea, and why it is off
+Alexander proposed making cells unbuildable once a strike lands on them, so the
+board slowly scars. It would fix stale intel outright — a confirmed-empty cell
+would stay empty forever. It is deferred rather than rejected, for three
+reasons:
+- It makes uninformed shooting genuinely useful (area denial with no recon),
+  which fights the design's first pillar.
+- It collides with M3's sanctions, which punish missing. Rewarding misses now
+  and punishing them in M3 means tuning two opposing forces, and it would muddy
+  M3's actual test question — is recon worth it, or is guessing still viable?
+- GDD §5 explicitly says the defender may build over ruins.
+
+Craters are recorded from now on and rendered faintly on your own map, with
+`COMBAT.cratersBlockBuilding` (default false) to switch the rule on mid-playtest
+without a code change. If it earns its place, consider craters that heal after
+a few turns so the board scars and recovers rather than only shrinking.
+
+### What changed
+- Thick red border line between the two front rows, drawn as an overlay so the
+  halves still touch and the flight-path coordinate mapping holds.
+- Row numbers and zone bands now line up with their rows. They were drifting
+  1px per row — about 15px, half a cell, by row 16 — because the grid used
+  `gap-px` while the label column used exactly `var(--cell)`. Removing the gaps
+  in favour of per-cell borders fixed the labels, the zone rail and the SVG
+  overlay alignment in one move.
+- Column letters are back, in a sticky strip that stays visible while scrolling.
+  They were lost in the session-3 rewrite and survived only in tooltips.
+- Anti-air engagement envelope drawn as a circle on hover. A circle, not tinted
+  cells: a battery engages anything whose *path crosses* it, including strikes
+  aimed well beyond it, so tinted cells would wrongly imply "these squares are
+  safe".
+- Airfield reach drawn as a full circle across both halves — bright over enemy
+  ground where cells are targetable, dim grey over your own, where it only
+  shows the envelope's shape.
+- Hand-off screen no longer says "Turn 1" during deployment.
+
+### Where to pick up
+Milestone 3: recon flight paths, fog lifting in scanned areas, civilian cities,
+sanctions, casualty auto-loss. The phase/timeline UI belongs here too. Reuse
+`combat.ts` geometry and the `Envelopes` overlay in `MapStack`.
+
+---
+
 ## Session 3 — UX pass between M2 and M3 (stacked maps, strike queue)
 
 Driven by playtest feedback. Sits between M2 and M3 deliberately: recon in M3

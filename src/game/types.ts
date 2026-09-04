@@ -22,6 +22,12 @@ export interface Ruin {
   kind: StructureKind
 }
 
+/** Ground scarred by a strike that landed. See COMBAT.cratersBlockBuilding. */
+export interface Crater {
+  col: number
+  row: number
+}
+
 /**
  * A point in "stacked" space, where the two grids face each other across the
  * border at y = 0. See game/combat.ts.
@@ -65,11 +71,14 @@ export interface PlayerState {
   name: string
   structures: Structure[]
   ruins: Ruin[]
+  craters: Crater[]
   /** This player's picture of the ENEMY grid, built up by shooting at it. */
   known: KnownCell[]
   actionPoints: number
   /** Guards against an instant win when a player has simply never built one. */
   hasBuiltAirfield: boolean
+  /** Set once the required starting structures are down. */
+  setupDone: boolean
 }
 
 /** A target marked during planning, not yet fired. */
@@ -81,13 +90,20 @@ export interface QueuedStrike {
 }
 
 /**
+ * `setup`     — placing required starting structures, before turn 1.
  * `briefing`  — what happened to you since your last turn.
  * `planning`  — build, and mark targets.
  * `resolving` — the committed queue is flying, one strike at a time.
  * `pass`      — hand-off screen.
  * `gameover`  — a winner has been declared.
  */
-export type Phase = 'briefing' | 'planning' | 'resolving' | 'pass' | 'gameover'
+export type Phase =
+  | 'setup'
+  | 'briefing'
+  | 'planning'
+  | 'resolving'
+  | 'pass'
+  | 'gameover'
 
 /** Which map the active player is currently looking at. */
 export type MapView = 'own' | 'enemy'
@@ -105,6 +121,8 @@ export interface MatchState {
   /** Airfield the next strike launches from. */
   selectedSourceId: string | null
   players: Record<PlayerId, PlayerState>
+  /** Whether the hand-off screen was reached from setup or from a played turn. */
+  passOrigin: 'setup' | 'turn'
   /** Targets marked but not yet fired. Action points are reserved on queueing. */
   queued: QueuedStrike[]
   /** Strikes resolved this turn, newest last. Drives briefings and overlays. */

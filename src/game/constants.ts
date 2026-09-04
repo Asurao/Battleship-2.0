@@ -112,7 +112,17 @@ export const COMBAT = {
   antiAirRadius: 3,
   /** Chance a single battery downs a strike crossing its envelope. */
   antiAirHitChance: 0.35,
+  /**
+   * Experiment switch. When true, ground scarred by a landed strike can never
+   * be built on again, so every miss permanently denies a cell. Off by default:
+   * it rewards uninformed shooting, which fights the recon-first design and
+   * would skew M3's read on whether recon is worth the investment.
+   */
+  cratersBlockBuilding: false,
 } as const
+
+/** Each player places exactly these before turn 1. GDD §16. */
+export const REQUIRED_SETUP: StructureKind[] = ['airfield', 'antiair', 'command']
 
 export const STRUCTURE_HP: Record<StructureKind, number> = {
   airfield: 2,

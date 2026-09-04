@@ -2,15 +2,24 @@ interface PassScreenProps {
   fromName: string
   toName: string
   turn: number
+  /** Setup hand-offs happen before turn 1, so naming a turn would mislead. */
+  setup?: boolean
   onContinue: () => void
 }
 
-export function PassScreen({ fromName, toName, turn, onContinue }: PassScreenProps) {
+export function PassScreen({
+  fromName,
+  toName,
+  turn,
+  setup = false,
+  onContinue,
+}: PassScreenProps) {
   return (
     <div className="flex min-h-full flex-col items-center justify-center gap-6 px-6 text-center">
       <div className="space-y-2">
         <div className="text-[10px] uppercase tracking-[0.35em] text-slate-500">
-          Turn {turn} · {fromName} has finished
+          {setup ? 'Initial deployment' : `Turn ${turn}`} · {fromName} has
+          finished
         </div>
         <h1 className="text-3xl font-semibold text-slate-100">
           Pass the device to {toName}
@@ -18,7 +27,7 @@ export function PassScreen({ fromName, toName, turn, onContinue }: PassScreenPro
         <p className="mx-auto max-w-md text-sm leading-relaxed text-slate-400">
           {fromName}&rsquo;s map is hidden. Hand over the device before
           continuing — whoever presses the button below will see {toName}&rsquo;s
-          territory.
+          territory{setup ? ' to deploy their own starting forces' : ''}.
         </p>
       </div>
 
