@@ -3,8 +3,10 @@ import {
   BOARDS,
   COMBAT,
   DEFAULT_BOARD,
+  ECONOMY,
   OFFENSIVE_KINDS,
   REQUIRED_SETUP,
+  STRUCTURE_COST,
   STRUCTURE_HP,
 } from './constants'
 import type { BoardId, BoardPreset } from './constants'
@@ -44,7 +46,8 @@ function newPlayer(id: PlayerId, name: string): PlayerState {
     ruins: [],
     craters: [],
     known: [],
-    actionPoints: COMBAT.actionPointsPerTurn,
+    budget: ECONOMY.startingBudget,
+    actionPoints: 0,
     hasBuiltAirfield: false,
     setupDone: false,
   }
@@ -114,9 +117,9 @@ export function reducer(state: MatchState, action: Action): MatchState {
         (COMBAT.cratersBlockBuilding &&
           me.craters.some((c) => c.col === action.col && c.row === action.row))
       if (blocked) return state
-      // During setup a player fields one of each required structure, no more.
-      if (state.phase === 'setup' && !setupAllows(me, state.selectedKind))
-        return state
+
+      const cost = placementCost(state, me, state.selectedKind)
+      if (cost > me.budget) return state
 
       const structure = {
         id: `s${nextId++}`,
@@ -126,6 +129,7 @@ export function reducer(state: MatchState, action: Action): MatchState {
         row: action.row,
         hp: STRUCTURE_HP[state.selectedKind],
         maxHp: STRUCTURE_HP[state.selectedKind],
+        refundable: true,
       }
       return {
         ...state,
@@ -133,6 +137,7 @@ export function reducer(state: MatchState, action: Action): MatchState {
           ...state.players,
           [me.id]: {
             ...me,
+            budget: me.budget - cost,
             structures: [...me.structures, structure],
             hasBuiltAirfield:
               me.hasBuiltAirfield || state.selectedKind === 'airfield',
@@ -143,6 +148,8 @@ export function reducer(state: MatchState, action: Action): MatchState {
 
     case 'removeStructure': {
       const me = state.players[state.activePlayer]
+      const target = me.structures.find((s) => s.id === action.id)
+      if (!target || !target.refundable) return state
       return {
         ...state,
         selectedSourceId:
@@ -151,6 +158,7 @@ export function reducer(state: MatchState, action: Action): MatchState {
           ...state.players,
           [me.id]: {
             ...me,
+            budget: me.budget + refundOf(state, me, target.kind),
             structures: me.structures.filter((s) => s.id !== action.id),
           },
         },
@@ -252,14 +260,18 @@ export function reducer(state: MatchState, action: Action): MatchState {
 
       // Still fielding starting forces: hand over and keep setting up.
       if (state.passOrigin === 'setup') {
+        const opening = state.players[next].setupDone
         return {
           ...state,
           activePlayer: next,
-          phase: state.players[next].setupDone ? 'planning' : 'setup',
+          phase: opening ? 'planning' : 'setup',
           view: 'own',
           mode: 'build',
           selectedSourceId: null,
           queued: [],
+          players: opening
+            ? { ...state.players, [next]: openTurn(state.players[next]) }
+            : state.players,
         }
       }
 
@@ -280,10 +292,7 @@ export function reducer(state: MatchState, action: Action): MatchState {
         log: state.log.filter((s) => s.attacker !== next),
         players: {
           ...state.players,
-          [next]: {
-            ...state.players[next],
-            actionPoints: COMBAT.actionPointsPerTurn,
-          },
+          [next]: openTurn(state.players[next]),
         },
       }
     }
@@ -399,13 +408,6 @@ function rememberCell(
 }
 
 
-/** How many of a kind the setup allowance still permits. */
-function setupAllows(player: PlayerState, kind: StructureKind): boolean {
-  const allowed = REQUIRED_SETUP.filter((k) => k === kind).length
-  const placed = player.structures.filter((s) => s.kind === kind).length
-  return placed < allowed
-}
-
 export function setupRemaining(player: PlayerState): StructureKind[] {
   return REQUIRED_SETUP.filter(
     (kind) => !player.structures.some((s) => s.kind === kind),
@@ -414,4 +416,64 @@ export function setupRemaining(player: PlayerState): StructureKind[] {
 
 export function setupComplete(player: PlayerState): boolean {
   return setupRemaining(player).length === 0
+}
+
+
+/**
+ * A turn opens with fresh income and an action budget sized by surviving
+ * command infrastructure (GDD §11). Structures raised on earlier turns stop
+ * being refundable, so the map cannot be rearranged for free.
+ */
+function openTurn(player: PlayerState): PlayerState {
+  return {
+    ...player,
+    budget: player.budget + ECONOMY.incomePerTurn,
+    actionPoints: actionPointsFor(player),
+    structures: player.structures.map((s) =>
+      s.refundable ? { ...s, refundable: false } : s,
+    ),
+  }
+}
+
+export function actionPointsFor(player: PlayerState): number {
+  const commands = player.structures.filter((s) => s.kind === 'command').length
+  return ECONOMY.actionPointsBase + ECONOMY.actionPointsPerCommand * commands
+}
+
+/** Deployment fields one of each required structure free; extras are bought. */
+function isFreeRequired(
+  state: MatchState,
+  player: PlayerState,
+  kind: StructureKind,
+): boolean {
+  return (
+    state.phase === 'setup' &&
+    REQUIRED_SETUP.includes(kind) &&
+    !player.structures.some((s) => s.kind === kind)
+  )
+}
+
+export function placementCost(
+  state: MatchState,
+  player: PlayerState,
+  kind: StructureKind,
+): number {
+  return isFreeRequired(state, player, kind) ? 0 : STRUCTURE_COST[kind]
+}
+
+/**
+ * Taking back a free deployment structure must not mint budget, so the refund
+ * is whatever putting another one down would now cost — zero while it is still
+ * the free one.
+ */
+function refundOf(
+  state: MatchState,
+  player: PlayerState,
+  kind: StructureKind,
+): number {
+  const wouldBeFree =
+    state.phase === 'setup' &&
+    REQUIRED_SETUP.includes(kind) &&
+    player.structures.filter((s) => s.kind === kind).length === 1
+  return wouldBeFree ? 0 : STRUCTURE_COST[kind]
 }

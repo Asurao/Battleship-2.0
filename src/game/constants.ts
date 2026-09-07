@@ -154,8 +154,6 @@ export function structureDef(kind: StructureKind): StructureDef {
  * pass, and these are the hooks the M5 tech tree will raise and lower.
  */
 export const COMBAT = {
-  /** Flat per-turn action budget. The real economy arrives in M5. */
-  actionPointsPerTurn: 6,
   /** GDD §11: a standard attack costs 2. */
   attackCost: 2,
   /** Damage one bomber run deals to whatever it lands on. */
@@ -178,6 +176,28 @@ export const STRUCTURE_HP: Record<StructureKind, number> = {
   airfield: 2,
   antiair: 2,
   command: 3,
+}
+
+/**
+ * First-pass economy. GDD §11 also has income rising with successful strikes
+ * and with being attacked, plus the anti-runaway brakes in §15 — deliberately
+ * left out of this pass so scarcity can be read on its own before the
+ * snowballing engine and its counterweights arrive together.
+ */
+export const ECONOMY = {
+  /** GDD §16: enough for one or two extra structures at deployment. */
+  startingBudget: 8,
+  /** Flat grant from the civilian government each turn. */
+  incomePerTurn: 4,
+  /** GDD §11: action point capacity scales with command infrastructure. */
+  actionPointsBase: 2,
+  actionPointsPerCommand: 2,
+} as const
+
+export const STRUCTURE_COST: Record<StructureKind, number> = {
+  airfield: 5,
+  antiair: 4,
+  command: 6,
 }
 
 /** Structures that count toward the M2 win condition. */

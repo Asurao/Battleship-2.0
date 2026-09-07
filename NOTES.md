@@ -5,6 +5,67 @@ Companion to `Battleship_2.0_GDD.docx` and `Battleship_2.0_Prototype_Roadmap.doc
 
 ---
 
+## Session 6 — Economy, first pass
+
+Milestone order changed. Resources come before recon, and civilians/sanctions
+move to a later milestone: they are not needed for the core loop yet, and
+sanctions had nothing to bite on without a budget.
+
+### What the GDD specifies (§11)
+Three resources. **Defense budget** — granted each turn by the civilian
+government, spent on structures and upgrades, with income rising on successful
+strikes and on being attacked, falling on civilian casualties, and subject to
+diminishing returns on consecutive strikes. **Research points** — from labs and
+command centres, spent on the tech tree and scientist bids. **Action points** —
+per turn, no carryover, and "capacity scales with the player's command
+infrastructure". §5 adds that structures are consumables: a forward airfield is
+a "fast-burning fuse" whose earnings finance the safer back-line structures that
+replace it.
+
+### What this pass includes
+- Defense budget: 8 to start, +4 flat each turn, carries over.
+- Structure costs — airfield 5, anti-air 4, command centre 6.
+- **Action points = 2 + 2 per surviving command centre**, replacing the flat 6.
+- Deployment restored to GDD §16: one of each required structure free, then the
+  starting budget buys extras.
+- Structures raised this turn refund in full; once the turn is handed over they
+  are permanent. Without that window a player could relocate their whole base
+  every turn for nothing.
+
+### Deliberately excluded
+- **Research points.** Nothing to spend them on until the tech tree, so they
+  would be a number accumulating with no sink. They arrive with what they buy.
+- **Income modifiers** (strike income, attacked income, comeback bonus).
+  Alexander's call, and a good one: the GDD pairs strike income with two
+  anti-runaway brakes precisely because it snowballs, so shipping the engine and
+  its brakes together would make it impossible to tell which is doing what. Flat
+  income gives a clean read on scarcity alone.
+  *Known gap while this holds:* the "fast-burning fuse" economy is not being
+  tested. Forward placement currently trades on reach versus survival only, not
+  on earnings.
+- **Economic collapse win condition.** Costs nothing to omit — the existing win
+  condition fires the moment a player's last airfield is destroyed, so nobody
+  can sit airfield-less and broke. There is no blocked state to rescue.
+
+### The consequence to watch
+Tying action points to command centres makes them a tempo target: destroying one
+cuts the enemy's actions per turn. Until now only airfields were worth hitting,
+because they were the win condition. Verified in play — a player who bought a
+second command centre at deployment had 6 action points against the other's 4.
+
+A budget also means losing your last airfield is no longer instant death; you
+can rebuild if you can afford it. And rebuilding behind an enemy's search is now
+a spending decision rather than a free move, which is the first real pressure on
+the stale-intel problem from session 4.
+
+### Where to pick up
+Recon: flight paths reusing `combat.ts` geometry, corridor reveal, anti-air
+engaging recon aircraft, and the phase/timeline UI. Recon range and corridor
+width are cell-denominated, so they belong in the board preset next to bomber
+range and anti-air radius. Civilians and sanctions follow after that.
+
+---
+
 ## Session 5 — Board presets and strike feedback
 
 Playtest feedback. Still pre-M3.

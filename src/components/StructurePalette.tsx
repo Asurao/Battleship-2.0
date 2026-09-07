@@ -1,10 +1,11 @@
-import { STRUCTURES } from '../game/constants'
+import { STRUCTURES, STRUCTURE_COST } from '../game/constants'
 import type { Structure, StructureKind } from '../game/types'
 
 interface StructurePaletteProps {
   selected: StructureKind
   onSelect: (kind: StructureKind) => void
   placed: Structure[]
+  budget: number
   disabled: boolean
 }
 
@@ -12,6 +13,7 @@ export function StructurePalette({
   selected,
   onSelect,
   placed,
+  budget,
   disabled,
 }: StructurePaletteProps) {
   return (
@@ -29,12 +31,14 @@ export function StructurePalette({
       <div className="space-y-1.5">
         {STRUCTURES.map((def) => {
           const count = placed.filter((s) => s.kind === def.kind).length
+          const cost = STRUCTURE_COST[def.kind]
+          const affordable = budget >= cost
           const isSelected = def.kind === selected
           return (
             <button
               key={def.kind}
               type="button"
-              disabled={disabled}
+              disabled={disabled || !affordable}
               onClick={() => onSelect(def.kind)}
               className={`flex w-full items-start gap-2.5 rounded border px-2.5 py-2 text-left transition disabled:opacity-40 ${
                 isSelected
@@ -48,8 +52,19 @@ export function StructurePalette({
                   <span className="text-xs font-medium text-slate-100">
                     {def.label}
                   </span>
-                  <span className="font-mono text-[10px] text-slate-400">
-                    ×{count}
+                  <span className="flex items-baseline gap-1.5">
+                    <span className="font-mono text-[10px] text-slate-500">
+                      ×{count}
+                    </span>
+                    <span
+                      className={`rounded px-1.5 py-0.5 font-mono text-[10px] ${
+                        affordable
+                          ? 'bg-emerald-500/15 text-emerald-300'
+                          : 'bg-slate-800 text-slate-600'
+                      }`}
+                    >
+                      {cost}
+                    </span>
                   </span>
                 </span>
                 <span className="mt-0.5 block text-[10px] leading-snug text-slate-500">
@@ -62,8 +77,8 @@ export function StructurePalette({
       </div>
 
       <p className="border-t border-slate-800 pt-2.5 text-[10px] leading-snug text-slate-600">
-        No budget yet — place as many as you like. The economy that constrains
-        this arrives in Milestone 2.
+        Structures raised this turn can be taken back for a full refund. Once the
+        turn is handed over they are permanent.
       </p>
     </div>
   )

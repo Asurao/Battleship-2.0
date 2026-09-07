@@ -15,6 +15,12 @@ export interface Structure {
   row: number
   hp: number
   maxHp: number
+  /**
+   * True until the turn is handed over. Only a structure raised this turn can
+   * be taken back for a refund; older ones would let a player relocate their
+   * whole base for free every turn.
+   */
+  refundable: boolean
 }
 
 /** What a destroyed structure leaves behind on its owner's map. */
@@ -76,6 +82,8 @@ export interface PlayerState {
   craters: Crater[]
   /** This player's picture of the ENEMY grid, built up by shooting at it. */
   known: KnownCell[]
+  /** Defense budget. Carries over between turns. */
+  budget: number
   actionPoints: number
   /** Guards against an instant win when a player has simply never built one. */
   hasBuiltAirfield: boolean

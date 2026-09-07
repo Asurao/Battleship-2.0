@@ -7,12 +7,13 @@ import { PassScreen } from './components/PassScreen'
 import { SetupPanel } from './components/SetupPanel'
 import { StructurePalette } from './components/StructurePalette'
 import { isInRange } from './game/combat'
-import { BOARDS, COMBAT, structureDef } from './game/constants'
+import { BOARDS, ECONOMY, structureDef } from './game/constants'
 import type { BoardId } from './game/constants'
 
 /** Beat between strikes during resolution, so each one reads as its own event. */
 const STRIKE_INTERVAL_MS = 850
 import {
+  actionPointsFor,
   boardOf,
   incomingSince,
   initialState,
@@ -116,7 +117,7 @@ export default function App() {
             Battleship 2.0
           </h1>
           <span className="text-[10px] uppercase tracking-[0.25em] text-slate-600">
-            Prototype · Milestone 2
+            Prototype · Economy pass
           </span>
         </div>
 
@@ -125,10 +126,11 @@ export default function App() {
             label={settingUp ? 'Phase' : 'Turn'}
             value={settingUp ? 'Deploy' : String(state.turn)}
           />
+          <Readout label="Budget" value={String(me.budget)} />
           {!settingUp && (
             <Readout
               label="Action Points"
-              value={`${me.actionPoints} / ${COMBAT.actionPointsPerTurn}`}
+              value={`${me.actionPoints} / ${actionPointsFor(me)}`}
             />
           )}
           <Readout label="Commanding" value={me.name} />
@@ -171,6 +173,7 @@ export default function App() {
             selected={state.selectedKind}
             onSelect={(kind) => dispatch({ type: 'selectKind', kind })}
             placed={me.structures}
+            budget={me.budget}
             disabled={viewingEnemy}
           />
         )}
@@ -241,6 +244,10 @@ export default function App() {
               <Row label="Airfields" value={String(airfields.length)} />
               <Row label="Ruins" value={String(me.ruins.length)} />
               <Row label="Craters" value={String(me.craters.length)} />
+              <Row
+                label="Income / turn"
+                value={`+${ECONOMY.incomePerTurn}`}
+              />
               <Row
                 label="Bomber reach"
                 value={`${board.bomberRange} cells`}
