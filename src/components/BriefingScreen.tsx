@@ -1,7 +1,9 @@
-import { COL_LABELS, structureDef } from '../game/constants'
+import { colLabels, structureDef } from '../game/constants'
+import type { BoardPreset } from '../game/constants'
 import type { Strike } from '../game/types'
 
 interface BriefingScreenProps {
+  board: BoardPreset
   playerName: string
   turn: number
   incoming: Strike[]
@@ -9,6 +11,7 @@ interface BriefingScreenProps {
 }
 
 export function BriefingScreen({
+  board,
   playerName,
   turn,
   incoming,
@@ -19,6 +22,7 @@ export function BriefingScreen({
   const landed = incoming.filter(
     (s) => s.outcome === 'hit' || s.outcome === 'destroyed',
   )
+  const cols = colLabels(board)
 
   return (
     <div className="flex min-h-full flex-col items-center justify-center gap-6 px-6 py-10">
@@ -40,7 +44,7 @@ export function BriefingScreen({
 
         <ul className="space-y-1.5">
           {incoming.map((strike) => {
-            const where = `${COL_LABELS[strike.targetCol]}${strike.targetRow + 1}`
+            const where = `${cols[strike.targetCol]}${strike.targetRow + 1}`
             return (
               <li
                 key={strike.id}

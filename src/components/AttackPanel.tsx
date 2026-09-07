@@ -1,37 +1,36 @@
-import { strikeDistance } from '../game/combat'
-import { COL_LABELS, COMBAT, ROWS } from '../game/constants'
-import type { QueuedStrike, Structure } from '../game/types'
+import { deepestReach } from '../game/combat'
+import { COMBAT, colLabels, structureDef } from '../game/constants'
+import type { BoardPreset } from '../game/constants'
+import type { QueuedStrike, Strike, Structure } from '../game/types'
 
 interface AttackPanelProps {
+  board: BoardPreset
   airfields: Structure[]
   selectedSourceId: string | null
   actionPoints: number
   queued: QueuedStrike[]
+  /** Strikes already flown this turn, newest last. */
+  results: Strike[]
   resolving: boolean
   onSelectSource: (id: string) => void
   onRemoveTarget: (id: string) => void
   onCommit: () => void
 }
 
-/** Deepest enemy row an airfield can reach straight ahead of itself. */
-function deepestReach(source: Structure): number | null {
-  for (let row = ROWS - 1; row >= 0; row--) {
-    if (strikeDistance(source, source.col, row) <= COMBAT.bomberRange) return row
-  }
-  return null
-}
-
 export function AttackPanel({
+  board,
   airfields,
   selectedSourceId,
   actionPoints,
   queued,
+  results,
   resolving,
   onSelectSource,
   onRemoveTarget,
   onCommit,
 }: AttackPanelProps) {
   const canQueue = actionPoints >= COMBAT.attackCost
+  const cols = colLabels(board)
 
   return (
     <div className="flex w-64 shrink-0 flex-col gap-3">
@@ -52,7 +51,7 @@ export function AttackPanel({
       ) : (
         <div className="space-y-1.5">
           {airfields.map((field) => {
-            const deepest = deepestReach(field)
+            const deepest = deepestReach(board, field)
             const selected = field.id === selectedSourceId
             return (
               <button
@@ -68,7 +67,7 @@ export function AttackPanel({
               >
                 <span>
                   <span className="block font-mono text-xs text-slate-100">
-                    Airfield {COL_LABELS[field.col]}
+                    Airfield {cols[field.col]}
                     {field.row + 1}
                   </span>
                   <span className="mt-0.5 block text-[10px] text-slate-500">
@@ -83,6 +82,36 @@ export function AttackPanel({
               </button>
             )
           })}
+        </div>
+      )}
+
+      {results.length > 0 && (
+        <div className="border-t border-slate-800 pt-3">
+          <h2 className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+            Strikes Flown
+          </h2>
+          <ol className="mt-2 space-y-1">
+            {results.map((strike, i) => {
+              const tone = OUTCOME_TONE[strike.outcome]
+              return (
+                <li
+                  key={strike.id}
+                  className={`flex items-baseline gap-2 rounded border px-2.5 py-1.5 ${tone.box}`}
+                >
+                  <span className="font-mono text-[11px] text-slate-400">
+                    {i + 1}.
+                  </span>
+                  <span className="font-mono text-[11px] text-slate-200">
+                    {cols[strike.targetCol]}
+                    {strike.targetRow + 1}
+                  </span>
+                  <span className={`ml-auto text-[10px] ${tone.text}`}>
+                    {describeOutcome(strike)}
+                  </span>
+                </li>
+              )
+            })}
+          </ol>
         </div>
       )}
 
@@ -112,7 +141,7 @@ export function AttackPanel({
                   className="group flex w-full items-center justify-between gap-2 rounded border border-rose-500/30 bg-rose-500/10 px-2.5 py-1.5 text-left transition hover:border-rose-400/60 disabled:opacity-40"
                 >
                   <span className="font-mono text-[11px] text-rose-100">
-                    {i + 1}. {COL_LABELS[order.col]}
+                    {results.length + i + 1}. {cols[order.col]}
                     {order.row + 1}
                   </span>
                   <span className="text-[10px] text-slate-500 group-hover:text-rose-300">
@@ -144,9 +173,34 @@ export function AttackPanel({
 
       <p className="mt-auto border-t border-slate-800 pt-2.5 text-[10px] leading-snug text-slate-600">
         Each strike costs {COMBAT.attackCost} AP. Any battery within{' '}
-        {COMBAT.antiAirRadius} cells of the flight path gets a{' '}
+        {board.antiAirRadius} cells of the flight path gets a{' '}
         {Math.round(COMBAT.antiAirHitChance * 100)}% shot at downing it.
       </p>
     </div>
   )
+}
+
+
+const OUTCOME_TONE: Record<Strike['outcome'], { box: string; text: string }> = {
+  destroyed: { box: 'border-rose-500/50 bg-rose-500/15', text: 'text-rose-200' },
+  hit: { box: 'border-orange-500/50 bg-orange-500/15', text: 'text-orange-200' },
+  miss: { box: 'border-slate-700 bg-slate-800/40', text: 'text-slate-400' },
+  intercepted: { box: 'border-sky-500/50 bg-sky-500/15', text: 'text-sky-200' },
+}
+
+function describeOutcome(strike: Strike): string {
+  switch (strike.outcome) {
+    case 'destroyed':
+      return `${label(strike)} destroyed`
+    case 'hit':
+      return `${label(strike)} damaged`
+    case 'miss':
+      return 'Empty ground'
+    case 'intercepted':
+      return 'Shot down en route'
+  }
+}
+
+function label(strike: Strike): string {
+  return strike.struckKind ? structureDef(strike.struckKind).label : 'Structure'
 }

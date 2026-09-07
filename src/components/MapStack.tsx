@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react'
-import { COLS, COL_LABELS, COMBAT, ROWS, ZONES, structureDef, zoneForRow } from '../game/constants'
+import { colLabels, structureDef, zoneForRow } from '../game/constants'
+import type { BoardPreset, ZoneDef } from '../game/constants'
 import type {
   Crater,
   KnownCell,
@@ -17,15 +18,21 @@ const ZONE_TINT: Record<string, string> = {
 }
 
 const KNOWLEDGE_STYLE: Record<KnownCell['knowledge'], string> = {
-  empty: 'bg-slate-700/40 text-slate-500',
-  struck: 'bg-orange-500/30 text-orange-200',
-  destroyed: 'bg-rose-600/30 text-rose-200',
+  empty: 'bg-slate-600/70 text-slate-300',
+  struck: 'bg-orange-500/80 text-orange-50 font-bold',
+  destroyed: 'bg-rose-600/90 text-rose-50 font-bold',
 }
 
 const KNOWLEDGE_MARK: Record<KnownCell['knowledge'], string> = {
   empty: '·',
-  struck: '✳',
+  struck: '◈',
   destroyed: '✕',
+}
+
+const KNOWLEDGE_WORD: Record<KnownCell['knowledge'], string> = {
+  empty: 'confirmed empty',
+  struck: 'structure damaged',
+  destroyed: 'structure destroyed',
 }
 
 interface CellSpec {
@@ -33,9 +40,16 @@ interface CellSpec {
   title?: string
   disabled?: boolean
   className?: string
+  /**
+   * Set when the cell supplies its own background. The zone tint is another
+   * `bg-` utility, and when two land on one element CSS source order decides
+   * the winner — which silently reduced struck tiles to a 4% wash.
+   */
+  opaque?: boolean
 }
 
 interface MapStackProps {
+  board: BoardPreset
   mode: 'build' | 'attack'
   own: { structures: Structure[]; ruins: Ruin[]; craters: Crater[] }
   enemyKnown: KnownCell[]
@@ -52,6 +66,7 @@ interface MapStackProps {
 }
 
 export function MapStack({
+  board,
   mode,
   own,
   enemyKnown,
@@ -128,20 +143,31 @@ export function MapStack({
   const queuedAt = new Map<string, number>()
   queued.forEach((q, i) => queuedAt.set(`${q.col},${q.row}`, i + 1))
 
-  const enemyRows = Array.from({ length: ROWS }, (_, i) => ROWS - 1 - i)
-  const ownRows = Array.from({ length: ROWS }, (_, i) => i)
+  const cols = colLabels(board)
+  const enemyRows = Array.from({ length: board.rows }, (_, i) => board.rows - 1 - i)
+  const ownRows = Array.from({ length: board.rows }, (_, i) => i)
   const source = own.structures.find((s) => s.id === selectedSourceId) ?? null
 
-  /** Battery whose engagement envelope should be drawn right now. */
   const hoveredStructure = hover ? structureAt.get(`${hover.col},${hover.row}`) : null
-  const envelope =
+  /** Whichever envelope the cursor is asking about, if any. */
+  const preview =
     mode === 'build' && hover
-      ? hoveredStructure?.kind === 'antiair'
-        ? hover
-        : !hoveredStructure && selectedKind === 'antiair'
-          ? hover
+      ? hoveredStructure
+        ? hoveredStructure.kind === 'antiair' || hoveredStructure.kind === 'airfield'
+          ? { kind: hoveredStructure.kind, cell: hover }
+          : null
+        : selectedKind === 'antiair' || selectedKind === 'airfield'
+          ? { kind: selectedKind, cell: hover }
           : null
       : null
+  const envelope = preview?.kind === 'antiair' ? preview.cell : null
+  /** Reach circle: the selected launch airfield, or one being hovered/placed. */
+  const reachAt =
+    preview?.kind === 'airfield'
+      ? preview.cell
+      : source
+        ? { col: source.col, row: source.row }
+        : null
 
   return (
     <div className="flex flex-col items-center gap-2">
@@ -156,12 +182,12 @@ export function MapStack({
         style={{
           // One unit for the whole 32-row stack. No gaps anywhere, so the SVG
           // overlay and the label gutters line up exactly with the cells.
-          ['--cell' as string]: 'clamp(18px, 2.3vw, 32px)',
+          ['--cell' as string]: board.cellSize,
           height: 'calc(100vh - 11rem)',
         }}
       >
         <div className="w-max p-2">
-          <ColumnLetters />
+          <ColumnLetters cols={cols} />
 
           <div className="flex gap-1.5">
             <div className="flex w-6 shrink-0 flex-col">
@@ -176,6 +202,7 @@ export function MapStack({
             <div className="relative">
               {/* Enemy half, mirrored so its close range meets the border. */}
               <CellGrid
+                board={board}
                 rows={enemyRows}
                 onClick={onEnemyCellClick}
                 render={(col, row) => {
@@ -184,29 +211,35 @@ export function MapStack({
                   const order = queuedAt.get(key)
                   const inRange = reachable?.has(key) ?? false
                   const dimmed = reachable !== null && !inRange
-                  const label = `${COL_LABELS[col]}${row + 1}`
+                  const label = `${cols[col]}${row + 1}`
                   if (order) {
                     return {
                       content: order,
                       title: `${label} — target ${order}, click to remove`,
                       disabled: !interactive || mode !== 'attack',
+                      opaque: true,
                       className:
-                        'bg-rose-500/40 text-rose-50 font-bold ring-2 ring-inset ring-rose-300',
+                        'bg-rose-500/70 text-rose-50 font-bold ring-2 ring-inset ring-rose-300',
+                    }
+                  }
+                  if (seen) {
+                    return {
+                      content: KNOWLEDGE_MARK[seen.knowledge],
+                      title: `${label} — ${KNOWLEDGE_WORD[seen.knowledge]}`,
+                      disabled: !interactive || dimmed || mode !== 'attack',
+                      opaque: true,
+                      className: `${KNOWLEDGE_STYLE[seen.knowledge]} ${dimmed ? 'opacity-40' : ''}`,
                     }
                   }
                   return {
-                    content: seen ? KNOWLEDGE_MARK[seen.knowledge] : '',
-                    title: dimmed
-                      ? `${label} — out of range`
-                      : `${label}${seen ? ` — ${seen.knowledge}` : ''}`,
+                    title: dimmed ? `${label} — out of range` : label,
                     disabled: !interactive || dimmed || mode !== 'attack',
-                    className: `${seen ? KNOWLEDGE_STYLE[seen.knowledge] : 'bg-slate-800/90'} ${
-                      dimmed
-                        ? 'opacity-20'
-                        : inRange
-                          ? 'bg-sky-500/10 hover:bg-sky-500/50'
-                          : ''
-                    }`,
+                    opaque: true,
+                    className: dimmed
+                      ? 'bg-slate-900 opacity-30'
+                      : inRange
+                        ? 'bg-sky-950 ring-1 ring-inset ring-sky-400/40 hover:bg-sky-700'
+                        : 'bg-slate-800',
                   }
                 }}
               />
@@ -224,12 +257,13 @@ export function MapStack({
 
               {/* Your half. */}
               <CellGrid
+                board={board}
                 rows={ownRows}
                 onClick={onOwnCellClick}
                 onHover={setHover}
                 render={(col, row) => {
                   const key = `${col},${row}`
-                  const label = `${COL_LABELS[col]}${row + 1}`
+                  const label = `${cols[col]}${row + 1}`
                   const structure = structureAt.get(key)
                   if (structure) {
                     const def = structureDef(structure.kind)
@@ -251,6 +285,7 @@ export function MapStack({
                       ),
                       title: `${def.label} at ${label} — ${structure.hp} of ${structure.maxHp} HP`,
                       disabled: !interactive || mode !== 'build',
+                      opaque: true,
                       className: `${def.tone} ${
                         structure.id === selectedSourceId
                           ? 'ring-2 ring-inset ring-slate-100'
@@ -264,7 +299,8 @@ export function MapStack({
                       content: '▨',
                       title: `Ruins of ${structureDef(ruin.kind).label} at ${label}`,
                       disabled: true,
-                      className: 'bg-slate-700/50 text-slate-500',
+                      opaque: true,
+                      className: 'bg-slate-700 text-slate-400',
                     }
                   }
                   const cratered = craterAt.has(key)
@@ -278,21 +314,23 @@ export function MapStack({
                     ) : null,
                     title: cratered
                       ? `${label} — struck ground`
-                      : `${label} — ${zoneForRow(row).label}`,
+                      : `${label} — ${zoneForRow(board, row).label}`,
                     disabled: !interactive || mode !== 'build',
-                    className: `group ${cratered ? 'bg-slate-800/70' : ''} hover:bg-slate-600/60`,
+                    opaque: cratered,
+                    className: `group ${cratered ? 'bg-slate-800' : ''} hover:bg-slate-600/60`,
                   }
                 }}
               />
 
               <Envelopes
+                board={board}
                 strikes={strikes}
-                source={source}
+                reachAt={reachAt}
                 antiAirAt={envelope}
               />
             </div>
 
-            <ZoneRail />
+            <ZoneRail board={board} />
           </div>
         </div>
       </div>
@@ -300,15 +338,15 @@ export function MapStack({
   )
 }
 
-function ColumnLetters() {
+function ColumnLetters({ cols }: { cols: string[] }) {
   return (
     <div className="sticky top-0 z-30 mb-0.5 flex gap-1.5 bg-slate-950/95 pb-0.5">
       <div className="w-6 shrink-0" />
       <div
         className="grid"
-        style={{ gridTemplateColumns: `repeat(${COLS}, var(--cell))` }}
+        style={{ gridTemplateColumns: `repeat(${cols.length}, var(--cell))` }}
       >
-        {COL_LABELS.map((l) => (
+        {cols.map((l) => (
           <div key={l} className="text-center font-mono text-[10px] text-slate-400">
             {l}
           </div>
@@ -319,13 +357,13 @@ function ColumnLetters() {
   )
 }
 
-function ZoneRail() {
+function ZoneRail({ board }: { board: BoardPreset }) {
   return (
     <div className="flex w-24 shrink-0 flex-col">
-      {[...ZONES].reverse().map((z) => (
+      {[...board.zones].reverse().map((z) => (
         <ZoneBand key={`e${z.id}`} zone={z} tone="text-rose-200/70" />
       ))}
-      {ZONES.map((z) => (
+      {board.zones.map((z) => (
         <ZoneBand key={`o${z.id}`} zone={z} tone="text-slate-300" blurb />
       ))}
     </div>
@@ -333,11 +371,13 @@ function ZoneRail() {
 }
 
 function CellGrid({
+  board,
   rows,
   render,
   onClick,
   onHover,
 }: {
+  board: BoardPreset
   rows: number[]
   render: (col: number, row: number) => CellSpec
   onClick: (col: number, row: number) => void
@@ -347,15 +387,15 @@ function CellGrid({
     <div
       className="grid"
       style={{
-        gridTemplateColumns: `repeat(${COLS}, var(--cell))`,
+        gridTemplateColumns: `repeat(${board.cols}, var(--cell))`,
         gridAutoRows: 'var(--cell)',
       }}
       onMouseLeave={() => onHover?.(null)}
     >
       {rows.map((row) =>
-        Array.from({ length: COLS }, (_, col) => {
+        Array.from({ length: board.cols }, (_, col) => {
           const spec = render(col, row)
-          const zone = zoneForRow(row)
+          const zone = zoneForRow(board, row)
           return (
             <button
               key={`${col},${row}`}
@@ -364,7 +404,9 @@ function CellGrid({
               title={spec.title}
               onClick={() => onClick(col, row)}
               onMouseEnter={() => onHover?.({ col, row })}
-              className={`flex items-center justify-center border border-slate-800/70 font-mono text-[9px] transition ${ZONE_TINT[zone.id]} ${spec.className ?? ''}`}
+              className={`flex items-center justify-center border border-slate-800/70 font-mono text-[9px] transition ${
+                spec.opaque ? '' : ZONE_TINT[zone.id]
+              } ${spec.className ?? ''}`}
             >
               {spec.content}
             </button>
@@ -376,47 +418,49 @@ function CellGrid({
 }
 
 /**
- * Flight paths, the selected airfield's reach, and an anti-air engagement
- * envelope — all in stacked space, where the border is y = 0. The stack draws
- * 32 rows with the enemy's deepest row at the top, so visual y = 16 − stacked y.
- * Your own half therefore sits at visual y = 16 + row.
+ * Flight paths, an airfield's reach, and an anti-air engagement envelope — all
+ * in stacked space, where the border is y = 0. The stack draws both halves with
+ * the enemy's deepest row at the top, so visual y = rows − stacked y, and your
+ * own half sits at visual y = rows + row.
  */
 function Envelopes({
+  board,
   strikes,
-  source,
+  reachAt,
   antiAirAt,
 }: {
+  board: BoardPreset
   strikes: Strike[]
-  source: Structure | null
+  reachAt: { col: number; row: number } | null
   antiAirAt: { col: number; row: number } | null
 }) {
-  const flip = (y: number) => ROWS - y
-  const ownY = (row: number) => ROWS + row + 0.5
+  const flip = (y: number) => board.rows - y
+  const ownY = (row: number) => board.rows + row + 0.5
 
   return (
     <svg
-      viewBox={`0 0 ${COLS} ${ROWS * 2}`}
+      viewBox={`0 0 ${board.cols} ${board.rows * 2}`}
       preserveAspectRatio="none"
       className="pointer-events-none absolute inset-0 h-full w-full"
     >
       <defs>
         <clipPath id="enemy-half">
-          <rect x={0} y={0} width={COLS} height={ROWS} />
+          <rect x={0} y={0} width={board.cols} height={board.rows} />
         </clipPath>
         <clipPath id="own-half">
-          <rect x={0} y={ROWS} width={COLS} height={ROWS} />
+          <rect x={0} y={board.rows} width={board.cols} height={board.rows} />
         </clipPath>
       </defs>
 
-      {/* Reach of the selected airfield, drawn across both halves so its shape
-          is visible rather than inferred from the enemy side alone. The half
-          over your own ground is dimmed: it shows the envelope, not targets. */}
-      {source && (
+      {/* Airfield reach, drawn across both halves so its shape is visible
+          rather than inferred from the enemy side alone. The half over your own
+          ground is dimmed: it shows the envelope, not targets. */}
+      {reachAt && (
         <>
           <circle
-            cx={source.col + 0.5}
-            cy={ownY(source.row)}
-            r={COMBAT.bomberRange}
+            cx={reachAt.col + 0.5}
+            cy={ownY(reachAt.row)}
+            r={board.bomberRange}
             fill="none"
             stroke="#38bdf8"
             strokeWidth={0.14}
@@ -425,9 +469,9 @@ function Envelopes({
             clipPath="url(#enemy-half)"
           />
           <circle
-            cx={source.col + 0.5}
-            cy={ownY(source.row)}
-            r={COMBAT.bomberRange}
+            cx={reachAt.col + 0.5}
+            cy={ownY(reachAt.row)}
+            r={board.bomberRange}
             fill="none"
             stroke="#64748b"
             strokeWidth={0.12}
@@ -445,14 +489,14 @@ function Envelopes({
           <circle
             cx={antiAirAt.col + 0.5}
             cy={ownY(antiAirAt.row)}
-            r={COMBAT.antiAirRadius}
+            r={board.antiAirRadius}
             fill="#38bdf8"
             opacity={0.12}
           />
           <circle
             cx={antiAirAt.col + 0.5}
             cy={ownY(antiAirAt.row)}
-            r={COMBAT.antiAirRadius}
+            r={board.antiAirRadius}
             fill="none"
             stroke="#38bdf8"
             strokeWidth={0.12}
@@ -461,44 +505,63 @@ function Envelopes({
         </g>
       )}
 
-      {strikes.map((strike) => {
+      {strikes.map((strike, i) => {
         const end = strike.interceptedAt ?? strike.to
-        const downed = strike.outcome === 'intercepted'
-        const color =
-          strike.outcome === 'intercepted'
-            ? '#38bdf8'
-            : strike.outcome === 'destroyed'
-              ? '#f43f5e'
-              : strike.outcome === 'hit'
-                ? '#fb923c'
-                : '#94a3b8'
+        const x1 = strike.from.x
+        const y1 = flip(strike.from.y)
+        const x2 = end.x
+        const y2 = flip(end.y)
+        // Dash length drives the draw-on animation, so the line has to know how
+        // long it is. CSS runs it: animation frames stall in a hidden tab.
+        const length = Math.hypot(x2 - x1, y2 - y1)
+        const color = OUTCOME_COLOR[strike.outcome]
         return (
           <g key={strike.id}>
             <line
-              x1={strike.from.x}
-              y1={flip(strike.from.y)}
-              x2={end.x}
-              y2={flip(end.y)}
+              className="strike-path"
+              x1={x1}
+              y1={y1}
+              x2={x2}
+              y2={y2}
               stroke={color}
-              strokeWidth={0.14}
-              strokeDasharray={downed ? '0.5 0.3' : undefined}
+              strokeWidth={0.16}
               strokeLinecap="round"
-              opacity={0.95}
+              strokeDasharray={length}
+              style={{ ['--len' as string]: String(length) }}
             />
-            <circle cx={end.x} cy={flip(end.y)} r={0.42} fill={color} opacity={0.25} />
-            <circle
-              cx={end.x}
-              cy={flip(end.y)}
-              r={0.42}
-              fill="none"
-              stroke={color}
-              strokeWidth={0.14}
-            />
+            <g className="strike-impact">
+              <circle cx={x2} cy={y2} r={0.52} fill={color} opacity={0.3} />
+              <circle
+                cx={x2}
+                cy={y2}
+                r={0.52}
+                fill="none"
+                stroke={color}
+                strokeWidth={0.16}
+              />
+              <text
+                x={x2}
+                y={y2 + 0.22}
+                textAnchor="middle"
+                fontSize={0.62}
+                fontWeight="bold"
+                fill={color}
+              >
+                {strike.outcome === 'intercepted' ? '✕' : i + 1}
+              </text>
+            </g>
           </g>
         )
       })}
     </svg>
   )
+}
+
+const OUTCOME_COLOR: Record<Strike['outcome'], string> = {
+  intercepted: '#38bdf8',
+  destroyed: '#f43f5e',
+  hit: '#fb923c',
+  miss: '#94a3b8',
 }
 
 function RowLabel({ n, tone }: { n: number; tone: string }) {
@@ -517,7 +580,7 @@ function ZoneBand({
   tone,
   blurb = false,
 }: {
-  zone: (typeof ZONES)[number]
+  zone: ZoneDef
   tone: string
   blurb?: boolean
 }) {

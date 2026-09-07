@@ -1,4 +1,5 @@
 import { COMBAT } from './constants'
+import type { BoardPreset } from './constants'
 import type { Point, Structure } from './types'
 
 /**
@@ -35,11 +36,23 @@ export function strikeDistance(
 }
 
 export function isInRange(
+  board: BoardPreset,
   source: Structure,
   targetCol: number,
   targetRow: number,
 ): boolean {
-  return strikeDistance(source, targetCol, targetRow) <= COMBAT.bomberRange
+  return strikeDistance(source, targetCol, targetRow) <= board.bomberRange
+}
+
+/** Deepest enemy row an airfield can reach straight ahead of itself. */
+export function deepestReach(
+  board: BoardPreset,
+  source: Structure,
+): number | null {
+  for (let row = board.rows - 1; row >= 0; row--) {
+    if (strikeDistance(source, source.col, row) <= board.bomberRange) return row
+  }
+  return null
 }
 
 interface SegmentHit {
@@ -74,6 +87,7 @@ export interface InterceptionResult {
  * batteries placed forward screen everything behind them — which is the point.
  */
 export function rollInterception(
+  board: BoardPreset,
   from: Point,
   to: Point,
   batteries: Structure[],
@@ -88,7 +102,7 @@ export function rollInterception(
         to,
       ),
     }))
-    .filter(({ approach }) => approach.distance <= COMBAT.antiAirRadius)
+    .filter(({ approach }) => approach.distance <= board.antiAirRadius)
     .sort((a, b) => a.approach.t - b.approach.t)
 
   for (const { battery, approach } of engagements) {

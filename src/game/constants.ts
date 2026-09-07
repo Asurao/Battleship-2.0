@@ -1,10 +1,6 @@
 import type { StructureKind, ZoneId } from './types'
 
-/** GDD §4: "a grid of approximately 12 columns by 16 rows". */
-export const COLS = 12
-export const ROWS = 16
-
-interface ZoneDef {
+export interface ZoneDef {
   id: ZoneId
   label: string
   /** Inclusive row range. Row 0 is the enemy border. */
@@ -13,35 +9,98 @@ interface ZoneDef {
   blurb: string
 }
 
-/** GDD §4: close = top 4 rows, mid = middle 8, long = bottom 4. */
-export const ZONES: ZoneDef[] = [
-  {
-    id: 'close',
-    label: 'Close Range',
-    startRow: 0,
-    endRow: 3,
-    blurb: 'Deep reach, high exposure. Forward bases die young.',
-  },
-  {
-    id: 'mid',
-    label: 'Mid Range',
-    startRow: 4,
-    endRow: 11,
-    blurb: 'The workhorse zone. Balanced reach and exposure.',
-  },
-  {
-    id: 'long',
-    label: 'Long Range',
-    startRow: 12,
-    endRow: 15,
-    blurb: 'Safest ground, reachable only by advanced weaponry.',
-  },
-]
+export type BoardId = 'standard' | 'compact'
 
-export function zoneForRow(row: number): ZoneDef {
-  const zone = ZONES.find((z) => row >= z.startRow && row <= z.endRow)
+export interface BoardPreset {
+  id: BoardId
+  label: string
+  note: string
+  cols: number
+  rows: number
+  zones: ZoneDef[]
+  /**
+   * Bomber reach in cells. Scales with the board: on a 16-row map a range of 12
+   * puts a forward airfield three quarters of the way down enemy territory and
+   * leaves their long-range zone unreachable. Hold it constant on a shorter map
+   * and a forward airfield covers everything, which erases the whole
+   * forward-versus-rear trade-off.
+   */
+  bomberRange: number
+  /** Engagement radius in cells; scaled so it covers the same share of width. */
+  antiAirRadius: number
+  /** CSS length for one cell, so a smaller board still fills the screen. */
+  cellSize: string
+}
+
+const ZONE_BLURB: Record<ZoneId, string> = {
+  close: 'Deep reach, high exposure. Forward bases die young.',
+  mid: 'The workhorse zone. Balanced reach and exposure.',
+  long: 'Safest ground, reachable only by advanced weaponry.',
+}
+
+const ZONE_LABEL: Record<ZoneId, string> = {
+  close: 'Close Range',
+  mid: 'Mid Range',
+  long: 'Long Range',
+}
+
+/** GDD §4 splits the map a quarter / half / quarter from the enemy border. */
+function buildZones(close: number, mid: number, long: number): ZoneDef[] {
+  const spans: [ZoneId, number][] = [
+    ['close', close],
+    ['mid', mid],
+    ['long', long],
+  ]
+  let cursor = 0
+  return spans.map(([id, span]) => {
+    const zone: ZoneDef = {
+      id,
+      label: ZONE_LABEL[id],
+      startRow: cursor,
+      endRow: cursor + span - 1,
+      blurb: ZONE_BLURB[id],
+    }
+    cursor += span
+    return zone
+  })
+}
+
+export const BOARDS: Record<BoardId, BoardPreset> = {
+  standard: {
+    id: 'standard',
+    label: 'Standard',
+    note: '12 × 16 · 192 cells per side',
+    cols: 12,
+    rows: 16,
+    zones: buildZones(4, 8, 4),
+    bomberRange: 12,
+    antiAirRadius: 3,
+    cellSize: 'clamp(18px, 2.3vw, 32px)',
+  },
+  compact: {
+    id: 'compact',
+    label: 'Compact',
+    note: '8 × 12 · 96 cells per side, faster to search',
+    cols: 8,
+    rows: 12,
+    zones: buildZones(3, 6, 3),
+    bomberRange: 9,
+    antiAirRadius: 2,
+    cellSize: 'clamp(22px, 3vw, 42px)',
+  },
+}
+
+export const DEFAULT_BOARD: BoardId = 'standard'
+
+export function zoneForRow(board: BoardPreset, row: number): ZoneDef {
+  const zone = board.zones.find((z) => row >= z.startRow && row <= z.endRow)
   if (!zone) throw new Error(`Row ${row} falls outside every zone`)
   return zone
+}
+
+/** Spreadsheet-style labels so players can talk about coordinates out loud. */
+export function colLabels(board: BoardPreset): string[] {
+  return Array.from({ length: board.cols }, (_, i) => String.fromCharCode(65 + i))
 }
 
 interface StructureDef {
@@ -101,15 +160,6 @@ export const COMBAT = {
   attackCost: 2,
   /** Damage one bomber run deals to whatever it lands on. */
   strikeDamage: 1,
-  /**
-   * How far a basic bomber reaches, measured across the border in cell widths.
-   * Tuned so a close-range airfield strikes deep into enemy territory while a
-   * long-range one cannot reach at all — GDD §5's zone restrictions, emerging
-   * from geometry instead of a hard rule.
-   */
-  bomberRange: 12,
-  /** Radius, in cells, in which a battery may engage a passing strike. */
-  antiAirRadius: 3,
   /** Chance a single battery downs a strike crossing its envelope. */
   antiAirHitChance: 0.35,
   /**
@@ -132,8 +182,3 @@ export const STRUCTURE_HP: Record<StructureKind, number> = {
 
 /** Structures that count toward the M2 win condition. */
 export const OFFENSIVE_KINDS: StructureKind[] = ['airfield']
-
-/** Spreadsheet-style labels so players can talk about coordinates out loud. */
-export const COL_LABELS = Array.from({ length: COLS }, (_, i) =>
-  String.fromCharCode(65 + i),
-)

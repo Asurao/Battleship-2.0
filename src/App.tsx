@@ -7,11 +7,13 @@ import { PassScreen } from './components/PassScreen'
 import { SetupPanel } from './components/SetupPanel'
 import { StructurePalette } from './components/StructurePalette'
 import { isInRange } from './game/combat'
-import { COLS, COMBAT, ROWS, structureDef } from './game/constants'
+import { BOARDS, COMBAT, structureDef } from './game/constants'
+import type { BoardId } from './game/constants'
 
 /** Beat between strikes during resolution, so each one reads as its own event. */
 const STRIKE_INTERVAL_MS = 850
 import {
+  boardOf,
   incomingSince,
   initialState,
   opponentOf,
@@ -22,6 +24,7 @@ import {
 export default function App() {
   const [state, dispatch] = useReducer(reducer, undefined, initialState)
 
+  const board = boardOf(state)
   const me = state.players[state.activePlayer]
   const enemy = state.players[opponentOf(state.activePlayer)]
   const attacking = state.mode === 'attack' && state.phase !== 'setup'
@@ -50,13 +53,13 @@ export default function App() {
   const reachable = useMemo(() => {
     if (!source) return null
     const cells = new Set<string>()
-    for (let row = 0; row < ROWS; row++) {
-      for (let col = 0; col < COLS; col++) {
-        if (isInRange(source, col, row)) cells.add(`${col},${row}`)
+    for (let row = 0; row < board.rows; row++) {
+      for (let col = 0; col < board.cols; col++) {
+        if (isInRange(board, source, col, row)) cells.add(`${col},${row}`)
       }
     }
     return cells
-  }, [source])
+  }, [source, board])
 
   /** Strikes this player launched this turn, drawn on the enemy map. */
   const outgoing = state.log.filter((s) => s.attacker === me.id)
@@ -95,6 +98,7 @@ export default function App() {
     return (
       <div className="h-full overflow-auto bg-slate-950 text-slate-200">
         <BriefingScreen
+          board={board}
           playerName={me.name}
           turn={state.turn}
           incoming={incomingSince(state, me.id)}
@@ -151,10 +155,12 @@ export default function App() {
           />
         ) : attacking ? (
           <AttackPanel
+            board={board}
             airfields={airfields}
             selectedSourceId={state.selectedSourceId}
             actionPoints={me.actionPoints}
             queued={state.queued}
+            results={outgoing}
             resolving={resolving}
             onSelectSource={(id) => dispatch({ type: 'selectSource', id })}
             onRemoveTarget={(id) => dispatch({ type: 'unqueueStrike', id })}
@@ -192,6 +198,7 @@ export default function App() {
           </div>
 
           <MapStack
+            board={board}
             mode={state.mode}
             own={{
               structures: me.structures,
@@ -234,6 +241,10 @@ export default function App() {
               <Row label="Airfields" value={String(airfields.length)} />
               <Row label="Ruins" value={String(me.ruins.length)} />
               <Row label="Craters" value={String(me.craters.length)} />
+              <Row
+                label="Bomber reach"
+                value={`${board.bomberRange} cells`}
+              />
               <Row label="Targets marked" value={String(state.queued.length)} />
               <Row label="Strikes flown" value={String(outgoing.length)} />
             </dl>
@@ -255,13 +266,41 @@ export default function App() {
             Milestone 3 — until then you are shooting blind.
           </p>
 
-          <button
-            type="button"
-            onClick={() => dispatch({ type: 'resetMatch' })}
-            className="text-[10px] text-slate-600 underline underline-offset-2 transition hover:text-slate-400"
-          >
-            Reset match
-          </button>
+          <div className="border-t border-slate-800 pt-2.5">
+            <h2 className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+              Board
+            </h2>
+            <p className="mt-1 text-[10px] leading-snug text-slate-600">
+              Picking a size starts a fresh match — it cannot change mid-game.
+            </p>
+            <div className="mt-2 space-y-1">
+              {Object.values(BOARDS).map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() =>
+                    dispatch({
+                      type: 'resetMatch',
+                      boardId: preset.id as BoardId,
+                    })
+                  }
+                  className={`w-full rounded border px-2 py-1.5 text-left transition ${
+                    preset.id === state.boardId
+                      ? 'border-slate-400 bg-slate-700/70'
+                      : 'border-slate-700 bg-slate-800/40 hover:border-slate-600'
+                  }`}
+                >
+                  <span className="block text-[11px] text-slate-100">
+                    {preset.label}
+                    {preset.id === state.boardId && ' · current'}
+                  </span>
+                  <span className="block text-[9px] text-slate-500">
+                    {preset.note}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
         </aside>
       </main>
     </div>

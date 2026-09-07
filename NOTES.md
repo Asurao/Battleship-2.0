@@ -5,6 +5,71 @@ Companion to `Battleship_2.0_GDD.docx` and `Battleship_2.0_Prototype_Roadmap.doc
 
 ---
 
+## Session 5 — Board presets and strike feedback
+
+Playtest feedback. Still pre-M3.
+
+### Decisions taken this session
+- **Two board presets, chosen at match start.** Standard 12x16 and Compact 8x12.
+  Switching starts a fresh match; it cannot change mid-game without invalidating
+  every placement and crater.
+- **Only cell-denominated numbers scale with the board.** Bomber range and
+  anti-air radius are measured in cells, so they distort if the grid changes.
+  Action points, damage, HP and the interception chance are counts and
+  probabilities, and stay honest at any size.
+- **Action points held at 6 on Compact**, which makes those matches roughly
+  twice as fast because structure density doubles. That speed is the reason to
+  try a smaller board; if it overshoots, action points are the dial.
+
+### Why range has to scale
+Range 12 on a 16-row map puts a forward airfield three quarters of the way down
+enemy territory and leaves their long-range zone unreachable — that gap is the
+whole forward-versus-rear trade-off. Hold range at 12 on a 12-row map and a
+forward airfield covers *everything*, so the long-range zone stops meaning
+anything. Range 9 restores the proportions. Measured on Compact:
+
+| Airfield zone | Reaches enemy row |
+|---|---|
+| Close (row 1) | 9 of 12 |
+| Mid (row 6) | 4 of 12 |
+| Long (row 11) | nothing |
+
+Anti-air radius drops 3 to 2 because 3 cells covers 25% of a 12-wide board but
+37% of an 8-wide one.
+
+### What changed
+- Airfield reach previews on hover during build and deployment, not just when
+  selected as a launch site. Deployment was previously a blind choice: you found
+  out what an airfield reached only on the next turn, after it was built.
+- Strike results log in the left panel. Entries appear as each strike lands, so
+  the list fills on the beat, and impact markers carry the same number as their
+  log line for cross-reference.
+- Flight paths animate: the line draws toward its target, then the impact marker
+  lands. Done in CSS, not animation frames, which are suspended in a hidden tab.
+- Result tiles recoloured and given distinct glyphs.
+
+### Bug worth remembering: two backgrounds on one element
+Result tiles carried both the zone tint (`bg-slate-400/[0.04]`) and their result
+colour (`bg-orange-500/80`). With two `bg-` utilities on one element **CSS source
+order decides the winner, not the order in the class attribute** — and Tailwind
+emits arbitrary-value utilities last, so a "damaged" tile was rendering at 4%
+opacity. That is why the tiles looked mushy. Cells now declare `opaque` when
+they supply their own background, and the zone tint is skipped for those.
+
+### Testing note: hidden panes freeze transitions
+`getComputedStyle` on a cell reported the *previous* colour indefinitely while
+the browser pane was hidden, because CSS transitions are suspended along with
+animation frames. An identical element created fresh in the same parent rendered
+correctly. When verifying colour in an embedded browser, screenshot it — reading
+computed styles can be measuring a frozen transition rather than the truth.
+
+### Where to pick up
+Milestone 3: recon flight paths, fog lifting in scanned areas, civilian cities,
+sanctions, casualty auto-loss, plus the phase/timeline UI. Worth playing both
+presets first to decide which board M3 gets tuned against.
+
+---
+
 ## Session 4 — Setup phase and map legibility
 
 Playtest feedback again. Still pre-M3.

@@ -1,3 +1,5 @@
+import type { BoardId } from './constants'
+
 export type PlayerId = 'p1' | 'p2'
 
 /** Distance bands from the enemy border, which sits at the top of the map. */
@@ -112,6 +114,8 @@ export type MapView = 'own' | 'enemy'
 export type PlanMode = 'build' | 'attack'
 
 export interface MatchState {
+  /** Chosen at match start; changing it mid-match would invalidate placements. */
+  boardId: BoardId
   turn: number
   activePlayer: PlayerId
   phase: Phase

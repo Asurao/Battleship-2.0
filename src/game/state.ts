@@ -1,10 +1,13 @@
 import { isInRange, rollInterception, attackerPoint, defenderPoint } from './combat'
 import {
+  BOARDS,
   COMBAT,
+  DEFAULT_BOARD,
   OFFENSIVE_KINDS,
   REQUIRED_SETUP,
   STRUCTURE_HP,
 } from './constants'
+import type { BoardId, BoardPreset } from './constants'
 import type {
   MapView,
   MatchState,
@@ -31,7 +34,7 @@ export type Action =
   | { type: 'finishSetup' }
   | { type: 'confirmPass' }
   | { type: 'beginTurn' }
-  | { type: 'resetMatch' }
+  | { type: 'resetMatch'; boardId?: BoardId }
 
 function newPlayer(id: PlayerId, name: string): PlayerState {
   return {
@@ -47,8 +50,14 @@ function newPlayer(id: PlayerId, name: string): PlayerState {
   }
 }
 
-export function initialState(): MatchState {
+/** The preset a match is being played on. */
+export function boardOf(state: MatchState): BoardPreset {
+  return BOARDS[state.boardId]
+}
+
+export function initialState(boardId: BoardId = DEFAULT_BOARD): MatchState {
   return {
+    boardId,
     turn: 1,
     activePlayer: 'p1',
     // Both sides field their starting structures before a shot is fired, so
@@ -153,7 +162,7 @@ export function reducer(state: MatchState, action: Action): MatchState {
       const source = me.structures.find((s) => s.id === state.selectedSourceId)
       if (!source) return state
       if (me.actionPoints < COMBAT.attackCost) return state
-      if (!isInRange(source, action.col, action.row)) return state
+      if (!isInRange(boardOf(state), source, action.col, action.row)) return state
       // One target per cell — a second click is a mistake, not a double strike.
       if (state.queued.some((q) => q.col === action.col && q.row === action.row))
         return state
@@ -285,7 +294,7 @@ export function reducer(state: MatchState, action: Action): MatchState {
       return { ...state, phase: 'planning' }
 
     case 'resetMatch':
-      return initialState()
+      return initialState(action.boardId ?? state.boardId)
   }
 }
 
@@ -314,7 +323,7 @@ function resolveStrike(state: MatchState, order: QueuedStrike): MatchState {
   }
 
   const batteries = enemy.structures.filter((s) => s.kind === 'antiair')
-  const interception = rollInterception(from, to, batteries)
+  const interception = rollInterception(boardOf(state), from, to, batteries)
 
   let enemyNext = enemy
   let knowledge: MatchState['players'][PlayerId]['known'] = me.known
