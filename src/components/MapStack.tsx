@@ -62,6 +62,8 @@ interface MapStackProps {
   /** Where past strikes were shot down, for triangulating enemy batteries. */
   interceptions: Point[]
   reachable: Set<string> | null
+  /** Radius of the reach circle — recon flies further than bombs. */
+  reachRadius: number
   queued: QueuedStrike[]
   queuedRecon: QueuedRecon[]
   strikes: Strike[]
@@ -83,6 +85,7 @@ export function MapStack({
   enemyKnown,
   interceptions,
   reachable,
+  reachRadius,
   queued,
   queuedRecon,
   strikes,
@@ -370,6 +373,7 @@ export function MapStack({
 
               <Envelopes
                 board={board}
+                reachRadius={reachRadius}
                 interceptions={interceptions}
                 strikes={strikes}
                 flights={flights}
@@ -473,6 +477,7 @@ function CellGrid({
  */
 function Envelopes({
   board,
+  reachRadius,
   strikes,
   flights,
   interceptions,
@@ -480,6 +485,7 @@ function Envelopes({
   antiAirAt,
 }: {
   board: BoardPreset
+  reachRadius: number
   strikes: Strike[]
   flights: ReconFlight[]
   interceptions: Point[]
@@ -512,7 +518,7 @@ function Envelopes({
           <circle
             cx={reachAt.col + 0.5}
             cy={ownY(reachAt.row)}
-            r={board.bomberRange}
+            r={reachRadius}
             fill="none"
             stroke="#38bdf8"
             strokeWidth={0.14}
@@ -523,7 +529,7 @@ function Envelopes({
           <circle
             cx={reachAt.col + 0.5}
             cy={ownY(reachAt.row)}
-            r={board.bomberRange}
+            r={reachRadius}
             fill="none"
             stroke="#64748b"
             strokeWidth={0.12}

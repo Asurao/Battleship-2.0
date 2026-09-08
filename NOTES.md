@@ -47,6 +47,13 @@ The first half of the original M3. Civilians and sanctions remain deferred.
   `queued.length` but not `queuedRecon.length`, so draining a recon did not
   retrigger the timer and the strikes sat in the queue forever.
 
+### Follow-up fix
+Recon mode showed no range overlay and no hover feedback on the enemy map: the
+reachable set was computed correctly for recon but then discarded, because the
+map was only given it when `attacking`. The reach circle also drew at bomber
+range while scouting. Both now follow the active mode — 117 cells and radius 12
+attacking, 143 cells and radius 14 scouting.
+
 ### Still open
 The phase/timeline UI. Three tabs (Build / Recon / Attack) plus a single commit
 button are functionally sufficient, so the timeline is now presentation rather

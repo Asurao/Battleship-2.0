@@ -272,7 +272,8 @@ export default function App() {
             }}
             enemyKnown={me.known}
             interceptions={me.interceptions}
-            reachable={attacking ? reachable : null}
+            reachable={attacking || scouting ? reachable : null}
+            reachRadius={scouting ? board.reconRange : board.bomberRange}
             queued={state.queued}
             queuedRecon={state.queuedRecon}
             strikes={outgoing}
