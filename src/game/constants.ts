@@ -26,6 +26,11 @@ export interface BoardPreset {
    * forward-versus-rear trade-off.
    */
   bomberRange: number
+  /**
+   * Recon reach in cells. Longer than a bomber's, so a player can see ground
+   * they cannot yet hit — which is what makes forward bases worth planning.
+   */
+  reconRange: number
   /** Engagement radius in cells; scaled so it covers the same share of width. */
   antiAirRadius: number
   /** CSS length for one cell, so a smaller board still fills the screen. */
@@ -74,6 +79,7 @@ export const BOARDS: Record<BoardId, BoardPreset> = {
     rows: 16,
     zones: buildZones(4, 8, 4),
     bomberRange: 12,
+    reconRange: 14,
     antiAirRadius: 2,
     cellSize: 'clamp(18px, 2.3vw, 32px)',
   },
@@ -85,6 +91,7 @@ export const BOARDS: Record<BoardId, BoardPreset> = {
     rows: 12,
     zones: buildZones(3, 6, 3),
     bomberRange: 9,
+    reconRange: 10.5,
     antiAirRadius: 1.5,
     cellSize: 'clamp(22px, 3vw, 42px)',
   },
@@ -167,6 +174,14 @@ export const COMBAT = {
    * either one alone leaves the surplus unusable.
    */
   sortiesPerAirfield: 1,
+  /**
+   * Recon flies on its own allowance, so an airfield can both scout and strike
+   * in a turn. Sharing one sortie would force a choice so stark that a
+   * single-airfield player could never do both.
+   */
+  reconSortiesPerAirfield: 1,
+  /** GDD §11: a recon mission is the cheap operation. */
+  reconCost: 1,
   /**
    * Experiment switch. When true, ground scarred by a landed strike can never
    * be built on again, so every miss permanently denies a cell. Off by default:

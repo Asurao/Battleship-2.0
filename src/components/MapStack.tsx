@@ -5,6 +5,8 @@ import type {
   Crater,
   KnownCell,
   Point,
+  QueuedRecon,
+  ReconFlight,
   QueuedStrike,
   Ruin,
   Strike,
@@ -20,18 +22,21 @@ const ZONE_TINT: Record<string, string> = {
 
 const KNOWLEDGE_STYLE: Record<KnownCell['knowledge'], string> = {
   empty: 'bg-slate-600/70 text-slate-300',
+  scouted: 'bg-emerald-500/70 text-emerald-50 font-bold',
   struck: 'bg-orange-500/80 text-orange-50 font-bold',
   destroyed: 'bg-rose-600/90 text-rose-50 font-bold',
 }
 
 const KNOWLEDGE_MARK: Record<KnownCell['knowledge'], string> = {
   empty: '·',
+  scouted: '',
   struck: '◈',
   destroyed: '✕',
 }
 
 const KNOWLEDGE_WORD: Record<KnownCell['knowledge'], string> = {
   empty: 'confirmed empty',
+  scouted: 'spotted',
   struck: 'structure damaged',
   destroyed: 'structure destroyed',
 }
@@ -51,14 +56,16 @@ interface CellSpec {
 
 interface MapStackProps {
   board: BoardPreset
-  mode: 'build' | 'attack'
+  mode: 'build' | 'recon' | 'attack'
   own: { structures: Structure[]; ruins: Ruin[]; craters: Crater[] }
   enemyKnown: KnownCell[]
   /** Where past strikes were shot down, for triangulating enemy batteries. */
   interceptions: Point[]
   reachable: Set<string> | null
   queued: QueuedStrike[]
+  queuedRecon: QueuedRecon[]
   strikes: Strike[]
+  flights: ReconFlight[]
   selectedSourceId: string | null
   selectedKind: StructureKind
   previewCode: string | null
@@ -77,7 +84,9 @@ export function MapStack({
   interceptions,
   reachable,
   queued,
+  queuedRecon,
   strikes,
+  flights,
   selectedSourceId,
   selectedKind,
   previewCode,
@@ -152,6 +161,8 @@ export function MapStack({
     const key = `${q.col},${q.row}`
     queuedAt.set(key, [...(queuedAt.get(key) ?? []), i + 1])
   })
+  const reconAt = new Map<string, number>()
+  queuedRecon.forEach((q, i) => reconAt.set(`${q.col},${q.row}`, i + 1))
 
   const cols = colLabels(board)
   const enemyRows = Array.from({ length: board.rows }, (_, i) => board.rows - 1 - i)
@@ -235,24 +246,40 @@ export function MapStack({
                         order.length > 1
                           ? `${label} — ${order.length} strikes marked (${order.join(', ')})`
                           : `${label} — target ${order[0]}`,
-                      disabled: !interactive || mode !== 'attack',
+                      disabled: !interactive || mode === 'build',
                       opaque: true,
                       className:
                         'bg-rose-500/70 text-rose-50 font-bold ring-2 ring-inset ring-rose-300',
                     }
                   }
-                  if (seen) {
+                  const scout = reconAt.get(key)
+                  if (scout) {
                     return {
-                      content: KNOWLEDGE_MARK[seen.knowledge],
-                      title: `${label} — ${KNOWLEDGE_WORD[seen.knowledge]}`,
-                      disabled: !interactive || dimmed || mode !== 'attack',
+                      content: scout,
+                      title: `${label} — recon destination ${scout}`,
+                      disabled: !interactive || mode === 'build',
+                      opaque: true,
+                      className:
+                        'bg-emerald-500/60 text-emerald-50 font-bold ring-2 ring-inset ring-emerald-300',
+                    }
+                  }
+                  if (seen) {
+                    const spotted = seen.knowledge === 'scouted' && seen.kind
+                    return {
+                      content: spotted
+                        ? structureDef(seen.kind!).code
+                        : KNOWLEDGE_MARK[seen.knowledge],
+                      title: spotted
+                        ? `${label} — ${structureDef(seen.kind!).label} spotted`
+                        : `${label} — ${KNOWLEDGE_WORD[seen.knowledge]}`,
+                      disabled: !interactive || dimmed || mode === 'build',
                       opaque: true,
                       className: `${KNOWLEDGE_STYLE[seen.knowledge]} ${dimmed ? 'opacity-40' : ''}`,
                     }
                   }
                   return {
                     title: dimmed ? `${label} — out of range` : label,
-                    disabled: !interactive || dimmed || mode !== 'attack',
+                    disabled: !interactive || dimmed || mode === 'build',
                     opaque: true,
                     className: dimmed
                       ? 'bg-slate-900 opacity-30'
@@ -345,6 +372,7 @@ export function MapStack({
                 board={board}
                 interceptions={interceptions}
                 strikes={strikes}
+                flights={flights}
                 reachAt={reachAt}
                 antiAirAt={envelope}
               />
@@ -446,12 +474,14 @@ function CellGrid({
 function Envelopes({
   board,
   strikes,
+  flights,
   interceptions,
   reachAt,
   antiAirAt,
 }: {
   board: BoardPreset
   strikes: Strike[]
+  flights: ReconFlight[]
   interceptions: Point[]
   reachAt: { col: number; row: number } | null
   antiAirAt: { col: number; row: number } | null
@@ -551,6 +581,29 @@ function Envelopes({
           </text>
         </g>
       ))}
+
+      {/* Recon courses. Drawn under strikes so a busy turn still reads. */}
+      {flights.map((flight) => {
+        const end = flight.interceptedAt ?? flight.to
+        const length = Math.hypot(end.x - flight.from.x, flip(end.y) - flip(flight.from.y))
+        return (
+          <g key={flight.id}>
+            <line
+              className="strike-path"
+              x1={flight.from.x}
+              y1={flip(flight.from.y)}
+              x2={end.x}
+              y2={flip(end.y)}
+              stroke={flight.outcome === 'intercepted' ? '#38bdf8' : '#34d399'}
+              strokeWidth={0.12}
+              strokeLinecap="round"
+              strokeDasharray={length}
+              style={{ ['--len' as string]: String(length) }}
+              opacity={0.85}
+            />
+          </g>
+        )
+      })}
 
       {strikes.map((strike, i) => {
         const end = strike.interceptedAt ?? strike.to

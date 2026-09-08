@@ -5,6 +5,60 @@ Companion to `Battleship_2.0_GDD.docx` and `Battleship_2.0_Prototype_Roadmap.doc
 
 ---
 
+## Session 9 — Recon
+
+The first half of the original M3. Civilians and sanctions remain deferred.
+
+### Decisions taken this session
+- **Recon flies on its own sortie allowance.** An airfield gets one combat
+  sortie and one recon sortie per turn, so it can both scout and strike.
+  Sharing a single sortie would have forced a choice so stark that a
+  one-airfield player could never do both.
+- **A flight reveals only the cells it actually passes over**, however briefly
+  — not a corridor. This makes the angle you fly a real decision: a diagonal
+  crosses far more cells than a straight run for the same range budget.
+  Measured in play: a diagonal to J9 revealed 13 cells.
+- Recon reaches further than bombs (Standard 14 vs 12, Compact 10.5 vs 9), so a
+  player can see ground they cannot yet hit — which is what makes planning a
+  forward base worthwhile.
+
+### What was built
+- Recon action: pick an airfield, pick a destination, 1 AP per flight.
+- `cellsAlongPath` in `combat.ts` — collects the parameters where the segment
+  crosses a column or row boundary, then reads the cell at the midpoint of each
+  span. Counts a cell the path merely clips, which is what makes diagonals pay.
+- Anti-air engages recon aircraft exactly as it engages strikes. **A downed
+  flight keeps whatever it saw before it fell**, so interception is a partial
+  loss rather than a wasted action point.
+- Scouted cells show the structure standing there; empty overflown cells become
+  confirmed empty. Recon overwrites older intel, and goes stale like everything
+  else.
+- The defender is briefed on aircraft crossing their territory, per GDD
+  pillar 2 — the passive intelligence the design wants.
+- **One commit fires both queues**, recon first, then strikes (GDD §12). Because
+  both are committed together, this turn's intel cannot inform this turn's
+  attacks — the separation is structural rather than a rule to police.
+
+### Bugs found while testing
+- The briefing only triggered on incoming strikes, so a recon-only turn was
+  completely silent to the defender — exactly the passive intelligence the GDD
+  is built on.
+- Resolution stalled after the last recon: the effect driving the beat watched
+  `queued.length` but not `queuedRecon.length`, so draining a recon did not
+  retrigger the timer and the strikes sat in the queue forever.
+
+### Still open
+The phase/timeline UI. Three tabs (Build / Recon / Attack) plus a single commit
+button are functionally sufficient, so the timeline is now presentation rather
+than mechanism. Worth doing, but it is no longer blocking anything.
+
+### Where to pick up
+Play it: the question this milestone exists to answer is whether recon
+investment feels worth it, or whether guessing is still viable. After that,
+civilians and sanctions.
+
+---
+
 ## Session 8 — Interception marks, left control column, repeat strikes
 
 Small tweaks from playtesting, plus the GDD edit.

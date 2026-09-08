@@ -16,7 +16,6 @@ interface AttackPanelProps {
   resolving: boolean
   onSelectSource: (id: string) => void
   onRemoveTarget: (id: string) => void
-  onCommit: () => void
 }
 
 export function AttackPanel({
@@ -30,7 +29,6 @@ export function AttackPanel({
   resolving,
   onSelectSource,
   onRemoveTarget,
-  onCommit,
 }: AttackPanelProps) {
   const canQueue = actionPoints >= COMBAT.attackCost
   const cols = colLabels(board)
@@ -169,16 +167,6 @@ export function AttackPanel({
           </ol>
         )}
 
-        <button
-          type="button"
-          disabled={queued.length === 0 || resolving}
-          onClick={onCommit}
-          className="mt-3 w-full rounded border border-rose-400/70 bg-rose-500/20 px-4 py-2.5 text-sm font-semibold text-rose-100 transition hover:bg-rose-500/40 disabled:border-slate-700 disabled:bg-slate-800/40 disabled:text-slate-600"
-        >
-          {resolving
-            ? 'Strikes away…'
-            : `Go — launch ${queued.length} strike${queued.length === 1 ? '' : 's'}`}
-        </button>
       </div>
 
       {!canQueue && queued.length === 0 && (

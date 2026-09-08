@@ -65,13 +65,39 @@ export interface Strike {
   struckKind?: StructureKind
 }
 
-/** What an attacker has learned about one enemy cell by shooting at it. */
-export type CellKnowledge = 'empty' | 'struck' | 'destroyed'
+/** What an attacker has learned about one enemy cell. */
+export type CellKnowledge = 'empty' | 'scouted' | 'struck' | 'destroyed'
 
 export interface KnownCell {
   col: number
   row: number
   knowledge: CellKnowledge
+  /** What recon saw standing here, when the cell was scouted. */
+  kind?: StructureKind
+}
+
+export interface QueuedRecon {
+  id: string
+  sourceId: string
+  col: number
+  row: number
+}
+
+export type ReconOutcome = 'scouted' | 'intercepted'
+
+export interface ReconFlight {
+  id: string
+  attacker: PlayerId
+  sourceId: string
+  targetCol: number
+  targetRow: number
+  outcome: ReconOutcome
+  from: Point
+  to: Point
+  /** Where an interceptor stopped it, when it was intercepted. */
+  interceptedAt?: Point
+  /** Cells the flight actually overflew before it ended. */
+  revealed: number
 }
 
 export interface PlayerState {
@@ -124,8 +150,8 @@ export type Phase =
 /** Which map the active player is currently looking at. */
 export type MapView = 'own' | 'enemy'
 
-/** Build places structures; attack launches strikes from a chosen airfield. */
-export type PlanMode = 'build' | 'attack'
+/** Build places structures; recon scouts; attack launches strikes. */
+export type PlanMode = 'build' | 'recon' | 'attack'
 
 export interface MatchState {
   /** Chosen at match start; changing it mid-match would invalidate placements. */
@@ -143,7 +169,11 @@ export interface MatchState {
   passOrigin: 'setup' | 'turn'
   /** Targets marked but not yet fired. Action points are reserved on queueing. */
   queued: QueuedStrike[]
+  /** Recon flights planned this turn. They resolve before any strike does. */
+  queuedRecon: QueuedRecon[]
   /** Strikes resolved this turn, newest last. Drives briefings and overlays. */
   log: Strike[]
+  /** Recon flights resolved this turn. */
+  reconLog: ReconFlight[]
   winner: PlayerId | null
 }

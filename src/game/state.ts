@@ -1,4 +1,11 @@
-import { isInRange, rollInterception, attackerPoint, defenderPoint } from './combat'
+import {
+  attackerPoint,
+  cellsAlongPath,
+  defenderPoint,
+  isInRange,
+  isInReconRange,
+  rollInterception,
+} from './combat'
 import {
   BOARDS,
   COMBAT,
@@ -11,12 +18,16 @@ import {
 } from './constants'
 import type { BoardId, BoardPreset } from './constants'
 import type {
+  CellKnowledge,
+  KnownCell,
   MapView,
   MatchState,
   PlanMode,
   PlayerId,
   PlayerState,
+  QueuedRecon,
   QueuedStrike,
+  ReconFlight,
   Strike,
   StructureKind,
 } from './types'
@@ -29,6 +40,8 @@ export type Action =
   | { type: 'placeStructure'; col: number; row: number }
   | { type: 'removeStructure'; id: string }
   | { type: 'queueStrike'; col: number; row: number }
+  | { type: 'queueRecon'; col: number; row: number }
+  | { type: 'unqueueRecon'; id: string }
   | { type: 'unqueueStrike'; id: string }
   | { type: 'commitStrikes' }
   | { type: 'clearInterceptions' }
@@ -75,7 +88,9 @@ export function initialState(boardId: BoardId = DEFAULT_BOARD): MatchState {
     players: { p1: newPlayer('p1', 'Player 1'), p2: newPlayer('p2', 'Player 2') },
     passOrigin: 'setup',
     queued: [],
+    queuedRecon: [],
     log: [],
+    reconLog: [],
     winner: null,
   }
 }
@@ -193,6 +208,47 @@ export function reducer(state: MatchState, action: Action): MatchState {
       }
     }
 
+    case 'queueRecon': {
+      const me = state.players[state.activePlayer]
+      const source = me.structures.find((s) => s.id === state.selectedSourceId)
+      if (!source) return state
+      if (me.actionPoints < COMBAT.reconCost) return state
+      if (reconSortiesLeft(state, source.id) <= 0) return state
+      if (!isInReconRange(boardOf(state), source, action.col, action.row))
+        return state
+
+      return {
+        ...state,
+        queuedRecon: [
+          ...state.queuedRecon,
+          {
+            id: `r${nextId++}`,
+            sourceId: source.id,
+            col: action.col,
+            row: action.row,
+          },
+        ],
+        players: {
+          ...state.players,
+          [me.id]: { ...me, actionPoints: me.actionPoints - COMBAT.reconCost },
+        },
+      }
+    }
+
+    case 'unqueueRecon': {
+      const order = state.queuedRecon.find((q) => q.id === action.id)
+      if (!order) return state
+      const me = state.players[state.activePlayer]
+      return {
+        ...state,
+        queuedRecon: state.queuedRecon.filter((q) => q.id !== action.id),
+        players: {
+          ...state.players,
+          [me.id]: { ...me, actionPoints: me.actionPoints + COMBAT.reconCost },
+        },
+      }
+    }
+
     case 'unqueueStrike': {
       const order = state.queued.find((q) => q.id === action.id)
       if (!order) return state
@@ -216,10 +272,24 @@ export function reducer(state: MatchState, action: Action): MatchState {
     }
 
     case 'commitStrikes':
-      if (state.queued.length === 0) return state
+      if (state.queued.length === 0 && state.queuedRecon.length === 0)
+        return state
       return { ...state, phase: 'resolving' }
 
     case 'resolveNext': {
+      // GDD §12: recon resolves before attacks. Because both were committed
+      // together, intel from this turn cannot inform this turn's strikes.
+      const [nextRecon, ...restRecon] = state.queuedRecon
+      if (nextRecon) {
+        const flown = resolveRecon(state, nextRecon)
+        const more = restRecon.length > 0 || state.queued.length > 0
+        return {
+          ...flown,
+          queuedRecon: restRecon,
+          phase: more ? 'resolving' : 'planning',
+        }
+      }
+
       const [next, ...rest] = state.queued
       if (!next) return { ...state, phase: 'planning' }
       const resolved = resolveStrike(state, next)
@@ -259,6 +329,7 @@ export function reducer(state: MatchState, action: Action): MatchState {
         passOrigin: 'turn',
         selectedSourceId: null,
         queued: [],
+        queuedRecon: [],
         players: { ...state.players, [me.id]: { ...me, actionPoints: 0 } },
       }
     }
@@ -277,6 +348,7 @@ export function reducer(state: MatchState, action: Action): MatchState {
           mode: 'build',
           selectedSourceId: null,
           queued: [],
+          queuedRecon: [],
           players: opening
             ? {
                 ...state.players,
@@ -288,7 +360,11 @@ export function reducer(state: MatchState, action: Action): MatchState {
 
       // Player 2 finishing their turn closes out the round.
       const roundComplete = state.activePlayer === 'p2'
-      const hasNews = state.log.some((s) => s.attacker !== next)
+      // Aircraft overhead count as news too: GDD pillar 2 says the defender
+      // watches their own map, and a recon-only turn would otherwise be silent.
+      const hasNews =
+        state.log.some((s) => s.attacker !== next) ||
+        state.reconLog.some((r) => r.attacker !== next)
       const nextTurn = roundComplete ? state.turn + 1 : state.turn
       return {
         ...state,
@@ -298,10 +374,12 @@ export function reducer(state: MatchState, action: Action): MatchState {
         mode: 'build',
         selectedSourceId: null,
         queued: [],
+        queuedRecon: [],
         turn: nextTurn,
         // Keep what was fired AT the incoming player so they can be briefed on
         // it; drop their own strikes, which they already watched resolve.
         log: state.log.filter((s) => s.attacker !== next),
+        reconLog: state.reconLog.filter((r) => r.attacker !== next),
         players: {
           ...state.players,
           [next]: openTurn(state.players[next], nextTurn),
@@ -412,14 +490,83 @@ function resolveStrike(state: MatchState, order: QueuedStrike): MatchState {
   }
 }
 
+/**
+ * A recon flight reveals every cell it overflies. If a battery brings it down
+ * the intel it gathered up to that point still counts, so a downed flight is a
+ * partial success rather than a wasted action point.
+ */
+function resolveRecon(state: MatchState, order: QueuedRecon): MatchState {
+  const board = boardOf(state)
+  const me = state.players[state.activePlayer]
+  const enemyId = opponentOf(state.activePlayer)
+  const enemy = state.players[enemyId]
+
+  const source = me.structures.find((s) => s.id === order.sourceId)
+  if (!source) return state
+
+  const from = attackerPoint(source.col, source.row)
+  const to = defenderPoint(order.col, order.row)
+  const interception = rollInterception(
+    board,
+    from,
+    to,
+    enemy.structures.filter((s) => s.kind === 'antiair'),
+  )
+
+  const overflown = cellsAlongPath(board, from, to, interception.at)
+  let known = me.known
+  for (const cell of overflown) {
+    const standing = enemy.structures.find(
+      (s) => s.col === cell.col && s.row === cell.row,
+    )
+    known = rememberCell(
+      known,
+      cell.col,
+      cell.row,
+      standing ? 'scouted' : 'empty',
+      standing?.kind,
+    )
+  }
+
+  const flight: ReconFlight = {
+    id: `f${nextId++}`,
+    attacker: me.id,
+    sourceId: source.id,
+    targetCol: order.col,
+    targetRow: order.row,
+    outcome: interception.intercepted ? 'intercepted' : 'scouted',
+    from,
+    to,
+    interceptedAt: interception.at,
+    revealed: overflown.length,
+  }
+
+  return {
+    ...state,
+    reconLog: [...state.reconLog, flight],
+    players: {
+      ...state.players,
+      [me.id]: {
+        ...me,
+        known,
+        interceptions: interception.at
+          ? [...me.interceptions, interception.at]
+          : me.interceptions,
+      },
+    },
+  }
+}
+
+/** Newer observations replace older ones outright — intel does not merge. */
 function rememberCell(
-  known: MatchState['players'][PlayerId]['known'],
+  known: KnownCell[],
   col: number,
   row: number,
-  knowledge: 'empty' | 'struck' | 'destroyed',
-) {
+  knowledge: CellKnowledge,
+  kind?: StructureKind,
+): KnownCell[] {
   const rest = known.filter((k) => k.col !== col || k.row !== row)
-  return [...rest, { col, row, knowledge }]
+  return [...rest, { col, row, knowledge, kind }]
 }
 
 
@@ -508,4 +655,22 @@ export function sortiesUsed(state: MatchState, airfieldId: string): number {
 
 export function sortiesLeft(state: MatchState, airfieldId: string): number {
   return COMBAT.sortiesPerAirfield - sortiesUsed(state, airfieldId)
+}
+
+
+/** Recon missions this airfield has committed or flown this turn. */
+export function reconSortiesLeft(state: MatchState, airfieldId: string): number {
+  const queued = state.queuedRecon.filter((q) => q.sourceId === airfieldId).length
+  const flown = state.reconLog.filter(
+    (r) => r.attacker === state.activePlayer && r.sourceId === airfieldId,
+  ).length
+  return COMBAT.reconSortiesPerAirfield - queued - flown
+}
+
+/** Recon flights the given player suffered since they last held the device. */
+export function overflightsSince(
+  state: MatchState,
+  player: PlayerId,
+): ReconFlight[] {
+  return state.reconLog.filter((r) => r.attacker !== player)
 }

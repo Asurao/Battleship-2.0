@@ -48,9 +48,10 @@ export function isInRange(
 export function deepestReach(
   board: BoardPreset,
   source: Structure,
+  range: number = board.bomberRange,
 ): number | null {
   for (let row = board.rows - 1; row >= 0; row--) {
-    if (strikeDistance(source, source.col, row) <= board.bomberRange) return row
+    if (strikeDistance(source, source.col, row) <= range) return row
   }
   return null
 }
@@ -111,6 +112,68 @@ export function rollInterception(
     }
   }
   return { intercepted: false }
+}
+
+export function isInReconRange(
+  board: BoardPreset,
+  source: Structure,
+  targetCol: number,
+  targetRow: number,
+): boolean {
+  return strikeDistance(source, targetCol, targetRow) <= board.reconRange
+}
+
+/**
+ * Every defender cell the flight passes through, however briefly.
+ *
+ * Works by collecting the parameters at which the segment crosses a column or
+ * row boundary, then reading the cell at the midpoint of each resulting span.
+ * That counts a cell the path merely clips, which is the point: a diagonal
+ * crosses far more cells than a straight run, so the angle you fly is a real
+ * decision.
+ */
+export function cellsAlongPath(
+  board: BoardPreset,
+  from: Point,
+  to: Point,
+  stopAt?: Point,
+): Array<{ col: number; row: number }> {
+  const end = stopAt ?? to
+  if (end.y <= 0) return []
+  // Only the leg inside the defender's airspace reveals anything.
+  const start = from.y < 0 ? borderCrossing(from, end) : from
+
+  const dx = end.x - start.x
+  const dy = end.y - start.y
+  if (dx === 0 && dy === 0) return []
+
+  const cuts = new Set<number>([0, 1])
+  const addCrossings = (a: number, b: number, delta: number) => {
+    if (delta === 0) return
+    const lo = Math.ceil(Math.min(a, b))
+    const hi = Math.floor(Math.max(a, b))
+    for (let line = lo; line <= hi; line++) {
+      const t = (line - a) / delta
+      if (t > 0 && t < 1) cuts.add(t)
+    }
+  }
+  addCrossings(start.x, end.x, dx)
+  addCrossings(start.y, end.y, dy)
+
+  const ordered = [...cuts].sort((a, b) => a - b)
+  const seen = new Set<string>()
+  const cells: Array<{ col: number; row: number }> = []
+  for (let i = 0; i < ordered.length - 1; i++) {
+    const mid = (ordered[i] + ordered[i + 1]) / 2
+    const col = Math.floor(start.x + mid * dx)
+    const row = Math.floor(start.y + mid * dy)
+    if (col < 0 || col >= board.cols || row < 0 || row >= board.rows) continue
+    const key = `${col},${row}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    cells.push({ col, row })
+  }
+  return cells
 }
 
 /** Where the flight path crosses into defended airspace, for drawing. */

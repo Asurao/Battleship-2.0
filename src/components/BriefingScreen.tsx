@@ -1,12 +1,14 @@
 import { colLabels, structureDef } from '../game/constants'
 import type { BoardPreset } from '../game/constants'
-import type { Strike } from '../game/types'
+import type { ReconFlight, Strike } from '../game/types'
 
 interface BriefingScreenProps {
   board: BoardPreset
   playerName: string
   turn: number
   incoming: Strike[]
+  /** Enemy aircraft seen crossing your territory — GDD pillar 2. */
+  overflights: ReconFlight[]
   onContinue: () => void
 }
 
@@ -15,6 +17,7 @@ export function BriefingScreen({
   playerName,
   turn,
   incoming,
+  overflights,
   onContinue,
 }: BriefingScreenProps) {
   const intercepted = incoming.filter((s) => s.outcome === 'intercepted').length
@@ -41,6 +44,30 @@ export function BriefingScreen({
           <Stat label="Intercepted" value={intercepted} tone="text-sky-300" />
           <Stat label="Missed" value={missed} tone="text-slate-400" />
         </div>
+
+        {overflights.length > 0 && (
+          <div className="space-y-1.5">
+            <h2 className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+              Aircraft over your territory
+            </h2>
+            {overflights.map((flight) => (
+              <div
+                key={flight.id}
+                className="flex items-baseline justify-between gap-3 rounded border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-[11px]"
+              >
+                <span className="font-mono text-emerald-200">
+                  {cols[flight.targetCol]}
+                  {flight.targetRow + 1}
+                </span>
+                <span className="flex-1 text-slate-300">
+                  {flight.outcome === 'intercepted'
+                    ? 'Reconnaissance aircraft shot down over your territory. It had already photographed part of its course.'
+                    : 'Reconnaissance aircraft crossed your territory unopposed. Whatever lay under its course has been seen.'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
 
         <ul className="space-y-1.5">
           {incoming.map((strike) => {

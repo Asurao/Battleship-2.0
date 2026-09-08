@@ -3,10 +3,11 @@ import { AttackPanel } from './components/AttackPanel'
 import { BriefingScreen } from './components/BriefingScreen'
 import { GameOverScreen } from './components/GameOverScreen'
 import { MapStack } from './components/MapStack'
+import { ReconPanel } from './components/ReconPanel'
 import { PassScreen } from './components/PassScreen'
 import { SetupPanel } from './components/SetupPanel'
 import { StructurePalette } from './components/StructurePalette'
-import { isInRange } from './game/combat'
+import { isInRange, isInReconRange } from './game/combat'
 import { BOARDS, ECONOMY, structureDef } from './game/constants'
 import type { BoardId } from './game/constants'
 
@@ -15,6 +16,8 @@ const STRIKE_INTERVAL_MS = 850
 import {
   actionPointsFor,
   boardOf,
+  overflightsSince,
+  reconSortiesLeft,
   sortiesLeft,
   incomingSince,
   initialState,
@@ -30,6 +33,7 @@ export default function App() {
   const me = state.players[state.activePlayer]
   const enemy = state.players[opponentOf(state.activePlayer)]
   const attacking = state.mode === 'attack' && state.phase !== 'setup'
+  const scouting = state.mode === 'recon' && state.phase !== 'setup'
   const viewingEnemy = state.view === 'enemy'
   const resolving = state.phase === 'resolving'
   const settingUp = state.phase === 'setup'
@@ -43,7 +47,9 @@ export default function App() {
       STRIKE_INTERVAL_MS,
     )
     return () => clearTimeout(timer)
-  }, [state.phase, state.queued.length])
+    // Both queues drain here, so both lengths must retrigger the timer —
+    // watching only the strike queue stalls the run after the last recon.
+  }, [state.phase, state.queued.length, state.queuedRecon.length])
 
   const airfields = useMemo(
     () => me.structures.filter((s) => s.kind === 'airfield'),
@@ -56,21 +62,30 @@ export default function App() {
       Object.fromEntries(airfields.map((f) => [f.id, sortiesLeft(state, f.id)])),
     [airfields, state],
   )
+  const reconSorties = useMemo(
+    () =>
+      Object.fromEntries(
+        airfields.map((f) => [f.id, reconSortiesLeft(state, f.id)]),
+      ),
+    [airfields, state],
+  )
 
-  /** Cells the selected airfield can actually reach, for the range overlay. */
+  /** Cells the selected airfield can reach — further for recon than for bombs. */
   const reachable = useMemo(() => {
     if (!source) return null
+    const within = scouting ? isInReconRange : isInRange
     const cells = new Set<string>()
     for (let row = 0; row < board.rows; row++) {
       for (let col = 0; col < board.cols; col++) {
-        if (isInRange(board, source, col, row)) cells.add(`${col},${row}`)
+        if (within(board, source, col, row)) cells.add(`${col},${row}`)
       }
     }
     return cells
-  }, [source, board])
+  }, [source, board, scouting])
 
   /** Strikes this player launched this turn, drawn on the enemy map. */
   const outgoing = state.log.filter((s) => s.attacker === me.id)
+  const outgoingRecon = state.reconLog.filter((r) => r.attacker === me.id)
 
   const structureAtOwnCell = (col: number, row: number) =>
     me.structures.find((s) => s.col === col && s.row === row)
@@ -110,6 +125,7 @@ export default function App() {
           playerName={me.name}
           turn={state.turn}
           incoming={incomingSince(state, me.id)}
+          overflights={overflightsSince(state, me.id)}
           onContinue={() => dispatch({ type: 'beginTurn' })}
         />
       </div>
@@ -152,11 +168,18 @@ export default function App() {
           {!settingUp && (
             <div className="flex gap-1 rounded border border-slate-800 bg-slate-900 p-1">
               <Tab
-                active={!attacking}
+                active={state.mode === 'build'}
                 onClick={() => dispatch({ type: 'setMode', mode: 'build' })}
                 disabled={resolving}
               >
                 Build
+              </Tab>
+              <Tab
+                active={scouting}
+                onClick={() => dispatch({ type: 'setMode', mode: 'recon' })}
+                disabled={resolving}
+              >
+                Recon
               </Tab>
               <Tab
                 active={attacking}
@@ -176,6 +199,18 @@ export default function App() {
               onSelect={(kind) => dispatch({ type: 'selectKind', kind })}
               onReady={() => dispatch({ type: 'finishSetup' })}
             />
+          ) : scouting ? (
+            <ReconPanel
+              board={board}
+              airfields={airfields}
+              reconSorties={reconSorties}
+              selectedSourceId={state.selectedSourceId}
+              queued={state.queuedRecon}
+              results={outgoingRecon}
+              resolving={resolving}
+              onSelectSource={(id) => dispatch({ type: 'selectSource', id })}
+              onRemoveTarget={(id) => dispatch({ type: 'unqueueRecon', id })}
+            />
           ) : attacking ? (
             <AttackPanel
               board={board}
@@ -188,7 +223,6 @@ export default function App() {
               resolving={resolving}
               onSelectSource={(id) => dispatch({ type: 'selectSource', id })}
               onRemoveTarget={(id) => dispatch({ type: 'unqueueStrike', id })}
-              onCommit={() => dispatch({ type: 'commitStrikes' })}
             />
           ) : (
             <StructurePalette
@@ -198,6 +232,21 @@ export default function App() {
               budget={me.budget}
               disabled={viewingEnemy}
             />
+          )}
+
+          {!settingUp && (state.queued.length > 0 || state.queuedRecon.length > 0) && (
+            <button
+              type="button"
+              disabled={resolving}
+              onClick={() => dispatch({ type: 'commitStrikes' })}
+              className="rounded border border-rose-400/70 bg-rose-500/20 px-4 py-2.5 text-sm font-semibold text-rose-100 transition hover:bg-rose-500/40 disabled:opacity-40"
+            >
+              {resolving
+                ? 'Operations under way…'
+                : `Commit ${state.queuedRecon.length + state.queued.length} operation${
+                    state.queuedRecon.length + state.queued.length === 1 ? '' : 's'
+                  }`}
+            </button>
           )}
 
           {!settingUp && (
@@ -225,15 +274,18 @@ export default function App() {
             interceptions={me.interceptions}
             reachable={attacking ? reachable : null}
             queued={state.queued}
+            queuedRecon={state.queuedRecon}
             strikes={outgoing}
+            flights={outgoingRecon}
             selectedSourceId={state.selectedSourceId}
             selectedKind={state.selectedKind}
             previewCode={attacking ? null : structureDef(state.selectedKind).code}
             interactive={!resolving}
             onEnemyCellClick={(col, row) => {
-              // Repeat clicks stack strikes on one cell; removal is done from
-              // the strike plan, so a heavily defended target can be hit twice.
-              if (attacking) dispatch({ type: 'queueStrike', col, row })
+              // Repeat clicks stack operations on one cell; removal is done
+              // from the plan lists, so a defended target can be hit twice.
+              if (scouting) dispatch({ type: 'queueRecon', col, row })
+              else if (attacking) dispatch({ type: 'queueStrike', col, row })
             }}
             onClearInterceptions={() =>
               dispatch({ type: 'clearInterceptions' })
