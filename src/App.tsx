@@ -118,96 +118,101 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col bg-slate-950 text-slate-200">
-      <header className="flex items-center justify-between border-b border-slate-800 px-5 py-3">
-        <div className="flex items-baseline gap-3">
-          <h1 className="text-sm font-semibold tracking-wide text-slate-100">
-            Battleship 2.0
-          </h1>
-          <span className="text-[10px] uppercase tracking-[0.25em] text-slate-600">
-            Prototype · Economy pass
-          </span>
-        </div>
-
-        <div className="flex items-center gap-5">
-          <Readout
-            label={settingUp ? 'Phase' : 'Turn'}
-            value={settingUp ? 'Deploy' : String(state.turn)}
-          />
-          <Readout label="Budget" value={String(me.budget)} />
-          {!settingUp && (
-            <Readout
-              label="Action Points"
-              value={`${me.actionPoints} / ${actionPointsFor(me)}`}
-            />
-          )}
-          <Readout label="Commanding" value={me.name} />
-          <button
-            type="button"
-            onClick={() => dispatch({ type: 'endTurn' })}
-            hidden={settingUp}
-            disabled={resolving}
-            className="rounded border border-slate-500 bg-slate-800 px-4 py-2 text-xs font-medium text-slate-100 transition hover:border-slate-300 hover:bg-slate-700 disabled:opacity-40"
-          >
-            End Turn
-          </button>
-        </div>
+      <header className="flex items-baseline gap-3 border-b border-slate-800 px-5 py-3">
+        <h1 className="text-sm font-semibold tracking-wide text-slate-100">
+          Battleship 2.0
+        </h1>
+        <span className="text-[10px] uppercase tracking-[0.25em] text-slate-600">
+          Prototype · Economy pass
+        </span>
       </header>
 
       <main className="flex min-h-0 flex-1 items-start justify-center gap-8 overflow-auto px-6 py-5">
-        {settingUp ? (
-          <SetupPanel
-            player={me}
-            selected={state.selectedKind}
-            remaining={remaining}
-            onSelect={(kind) => dispatch({ type: 'selectKind', kind })}
-            onReady={() => dispatch({ type: 'finishSetup' })}
-          />
-        ) : attacking ? (
-          <AttackPanel
-            board={board}
-            airfields={airfields}
-            sorties={sorties}
-            selectedSourceId={state.selectedSourceId}
-            actionPoints={me.actionPoints}
-            queued={state.queued}
-            results={outgoing}
-            resolving={resolving}
-            onSelectSource={(id) => dispatch({ type: 'selectSource', id })}
-            onRemoveTarget={(id) => dispatch({ type: 'unqueueStrike', id })}
-            onCommit={() => dispatch({ type: 'commitStrikes' })}
-          />
-        ) : (
-          <StructurePalette
-            selected={state.selectedKind}
-            onSelect={(kind) => dispatch({ type: 'selectKind', kind })}
-            placed={me.structures}
-            budget={me.budget}
-            disabled={viewingEnemy}
-          />
-        )}
-
-        <div className="flex flex-col items-center gap-3">
-          <div
-            className={`flex gap-1 rounded border border-slate-800 bg-slate-900 p-1 ${
-              settingUp ? 'invisible' : ''
-            }`}
-          >
-            <Tab
-              active={!attacking}
-              onClick={() => dispatch({ type: 'setMode', mode: 'build' })}
-              disabled={resolving}
-            >
-              Build
-            </Tab>
-            <Tab
-              active={attacking}
-              onClick={() => dispatch({ type: 'setMode', mode: 'attack' })}
-              disabled={resolving}
-            >
-              Attack
-            </Tab>
+        <div className="flex w-64 shrink-0 flex-col gap-3">
+          <div className="rounded border border-slate-700 bg-slate-900/60 px-3 py-2.5">
+            <div className="flex items-baseline justify-between">
+              <span className="text-sm font-semibold text-slate-100">
+                {me.name}
+              </span>
+              <span className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
+                {settingUp ? 'Deploy' : `Turn ${state.turn}`}
+              </span>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <Meter label="Budget" value={String(me.budget)} />
+              <Meter
+                label="Actions"
+                value={
+                  settingUp ? '—' : `${me.actionPoints}/${actionPointsFor(me)}`
+                }
+              />
+            </div>
           </div>
 
+          {!settingUp && (
+            <div className="flex gap-1 rounded border border-slate-800 bg-slate-900 p-1">
+              <Tab
+                active={!attacking}
+                onClick={() => dispatch({ type: 'setMode', mode: 'build' })}
+                disabled={resolving}
+              >
+                Build
+              </Tab>
+              <Tab
+                active={attacking}
+                onClick={() => dispatch({ type: 'setMode', mode: 'attack' })}
+                disabled={resolving}
+              >
+                Attack
+              </Tab>
+            </div>
+          )}
+
+          {settingUp ? (
+            <SetupPanel
+              player={me}
+              selected={state.selectedKind}
+              remaining={remaining}
+              onSelect={(kind) => dispatch({ type: 'selectKind', kind })}
+              onReady={() => dispatch({ type: 'finishSetup' })}
+            />
+          ) : attacking ? (
+            <AttackPanel
+              board={board}
+              airfields={airfields}
+              sorties={sorties}
+              selectedSourceId={state.selectedSourceId}
+              actionPoints={me.actionPoints}
+              queued={state.queued}
+              results={outgoing}
+              resolving={resolving}
+              onSelectSource={(id) => dispatch({ type: 'selectSource', id })}
+              onRemoveTarget={(id) => dispatch({ type: 'unqueueStrike', id })}
+              onCommit={() => dispatch({ type: 'commitStrikes' })}
+            />
+          ) : (
+            <StructurePalette
+              selected={state.selectedKind}
+              onSelect={(kind) => dispatch({ type: 'selectKind', kind })}
+              placed={me.structures}
+              budget={me.budget}
+              disabled={viewingEnemy}
+            />
+          )}
+
+          {!settingUp && (
+            <button
+              type="button"
+              onClick={() => dispatch({ type: 'endTurn' })}
+              disabled={resolving}
+              className="rounded border border-slate-500 bg-slate-800 px-4 py-2.5 text-sm font-medium text-slate-100 transition hover:border-slate-300 hover:bg-slate-700 disabled:opacity-40"
+            >
+              End Turn
+            </button>
+          )}
+        </div>
+
+        <div className="flex flex-col items-center gap-3">
           <MapStack
             board={board}
             mode={state.mode}
@@ -217,6 +222,7 @@ export default function App() {
               craters: me.craters,
             }}
             enemyKnown={me.known}
+            interceptions={me.interceptions}
             reachable={attacking ? reachable : null}
             queued={state.queued}
             strikes={outgoing}
@@ -225,13 +231,13 @@ export default function App() {
             previewCode={attacking ? null : structureDef(state.selectedKind).code}
             interactive={!resolving}
             onEnemyCellClick={(col, row) => {
-              if (!attacking) return
-              const marked = state.queued.find(
-                (q) => q.col === col && q.row === row,
-              )
-              if (marked) dispatch({ type: 'unqueueStrike', id: marked.id })
-              else dispatch({ type: 'queueStrike', col, row })
+              // Repeat clicks stack strikes on one cell; removal is done from
+              // the strike plan, so a heavily defended target can be hit twice.
+              if (attacking) dispatch({ type: 'queueStrike', col, row })
             }}
+            onClearInterceptions={() =>
+              dispatch({ type: 'clearInterceptions' })
+            }
             onOwnCellClick={(col, row) => {
               if (attacking) return
               const existing = structureAtOwnCell(col, row)
@@ -325,13 +331,13 @@ export default function App() {
   )
 }
 
-function Readout({ label, value }: { label: string; value: string }) {
+function Meter({ label, value }: { label: string; value: string }) {
   return (
-    <div className="text-right">
-      <div className="text-[10px] uppercase tracking-[0.2em] text-slate-500">
+    <div className="rounded bg-slate-800/60 px-2 py-1.5">
+      <div className="text-[9px] uppercase tracking-[0.15em] text-slate-500">
         {label}
       </div>
-      <div className="font-mono text-sm text-slate-200">{value}</div>
+      <div className="font-mono text-sm text-slate-100">{value}</div>
     </div>
   )
 }

@@ -5,6 +5,46 @@ Companion to `Battleship_2.0_GDD.docx` and `Battleship_2.0_Prototype_Roadmap.doc
 
 ---
 
+## Session 8 — Interception marks, left control column, repeat strikes
+
+Small tweaks from playtesting, plus the GDD edit.
+
+### GDD updated
+Added "Anti-Air Activation States" to §18 (Open Questions / Deferred Decisions),
+between "Doctrine Triggers" and "Working Title". It records that §6 already
+calls for active/passive defense, that the prototype does not implement it, the
+concrete two-state mechanic proposed (roughly 15% baseline, 35% activated, 1
+action point per battery), and that the anti-air radius cut is a holding measure
+until it lands.
+
+Word had a lock on the file, so the edit waited until it was closed — editing
+underneath an open document loses the change on its next save. Worth checking
+for `~$*.docx` before touching either document.
+
+### What changed
+- **Interception marks persist.** Where a strike was shot down is recorded on
+  the attacker's map and survives across turns. This is real intelligence: the
+  mark is the closest point on the flight path to the battery that fired, so a
+  battery sits within its engagement radius of that point and repeated marks
+  triangulate it. A "Clear N marks" button wipes them when the map gets busy.
+- **All controls moved into one left column** — player, turn, budget, actions,
+  the Build/Attack tabs, the active panel, and End Turn, stacked vertically. The
+  header is now just the title. The map keeps only its own view controls.
+- **Strikes may stack on one cell.** A second click adds another sortie rather
+  than cancelling the first, so a known but well-defended target can be hit
+  twice in a turn. Removal moved to the strike plan list, which already had
+  per-entry remove buttons. A cell with several strikes shows ×N.
+
+### Note
+Stacking a cell needs more than one airfield, because each flies one sortie per
+turn — so it only becomes possible once a second airfield is bought, around
+turn 3 on current income.
+
+### Where to pick up
+Recon, then the phase/timeline UI, then civilians and sanctions.
+
+---
+
 ## Session 7 — Economy tuning: sorties, no starting budget, weaker anti-air
 
 Playtest feedback: the starting budget double-dipped, and every match converged

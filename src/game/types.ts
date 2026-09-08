@@ -82,6 +82,12 @@ export interface PlayerState {
   craters: Crater[]
   /** This player's picture of the ENEMY grid, built up by shooting at it. */
   known: KnownCell[]
+  /**
+   * Where this player's strikes were shot down, in enemy-map coordinates. A
+   * battery sits within its engagement radius of each of these, so they can be
+   * triangulated. Persists across turns until cleared by hand.
+   */
+  interceptions: Point[]
   /** Defense budget. Carries over between turns. */
   budget: number
   actionPoints: number

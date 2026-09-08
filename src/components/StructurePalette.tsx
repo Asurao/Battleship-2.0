@@ -17,7 +17,7 @@ export function StructurePalette({
   disabled,
 }: StructurePaletteProps) {
   return (
-    <div className="w-64 shrink-0 space-y-3">
+    <div className="w-full space-y-3">
       <div>
         <h2 className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
           Construction

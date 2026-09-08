@@ -4,6 +4,7 @@ import type { BoardPreset, ZoneDef } from '../game/constants'
 import type {
   Crater,
   KnownCell,
+  Point,
   QueuedStrike,
   Ruin,
   Strike,
@@ -53,6 +54,8 @@ interface MapStackProps {
   mode: 'build' | 'attack'
   own: { structures: Structure[]; ruins: Ruin[]; craters: Crater[] }
   enemyKnown: KnownCell[]
+  /** Where past strikes were shot down, for triangulating enemy batteries. */
+  interceptions: Point[]
   reachable: Set<string> | null
   queued: QueuedStrike[]
   strikes: Strike[]
@@ -63,6 +66,7 @@ interface MapStackProps {
   onEnemyCellClick: (col: number, row: number) => void
   /** Fires for every cell on your half; the caller decides place vs remove. */
   onOwnCellClick: (col: number, row: number) => void
+  onClearInterceptions: () => void
 }
 
 export function MapStack({
@@ -70,6 +74,7 @@ export function MapStack({
   mode,
   own,
   enemyKnown,
+  interceptions,
   reachable,
   queued,
   strikes,
@@ -79,6 +84,7 @@ export function MapStack({
   interactive,
   onEnemyCellClick,
   onOwnCellClick,
+  onClearInterceptions,
 }: MapStackProps) {
   const scroller = useRef<HTMLDivElement>(null)
   const seam = useRef<HTMLDivElement>(null)
@@ -140,8 +146,12 @@ export function MapStack({
   const craterAt = new Set(own.craters.map((c) => `${c.col},${c.row}`))
   const knownAt = new Map<string, KnownCell>()
   for (const k of enemyKnown) knownAt.set(`${k.col},${k.row}`, k)
-  const queuedAt = new Map<string, number>()
-  queued.forEach((q, i) => queuedAt.set(`${q.col},${q.row}`, i + 1))
+  /** Strikes marked per cell — several may stack on a well-defended target. */
+  const queuedAt = new Map<string, number[]>()
+  queued.forEach((q, i) => {
+    const key = `${q.col},${q.row}`
+    queuedAt.set(key, [...(queuedAt.get(key) ?? []), i + 1])
+  })
 
   const cols = colLabels(board)
   const enemyRows = Array.from({ length: board.rows }, (_, i) => board.rows - 1 - i)
@@ -174,6 +184,12 @@ export function MapStack({
       <div className="flex gap-2">
         <ViewButton onClick={() => scrollTo('seam')}>↑ Front line</ViewButton>
         <ViewButton onClick={() => scrollTo('own')}>↓ Your map</ViewButton>
+        {interceptions.length > 0 && (
+          <ViewButton onClick={onClearInterceptions}>
+            ✕ Clear {interceptions.length} mark
+            {interceptions.length === 1 ? '' : 's'}
+          </ViewButton>
+        )}
       </div>
 
       <div
@@ -214,8 +230,11 @@ export function MapStack({
                   const label = `${cols[col]}${row + 1}`
                   if (order) {
                     return {
-                      content: order,
-                      title: `${label} — target ${order}, click to remove`,
+                      content: order.length > 1 ? `×${order.length}` : order[0],
+                      title:
+                        order.length > 1
+                          ? `${label} — ${order.length} strikes marked (${order.join(', ')})`
+                          : `${label} — target ${order[0]}`,
                       disabled: !interactive || mode !== 'attack',
                       opaque: true,
                       className:
@@ -324,6 +343,7 @@ export function MapStack({
 
               <Envelopes
                 board={board}
+                interceptions={interceptions}
                 strikes={strikes}
                 reachAt={reachAt}
                 antiAirAt={envelope}
@@ -426,11 +446,13 @@ function CellGrid({
 function Envelopes({
   board,
   strikes,
+  interceptions,
   reachAt,
   antiAirAt,
 }: {
   board: BoardPreset
   strikes: Strike[]
+  interceptions: Point[]
   reachAt: { col: number; row: number } | null
   antiAirAt: { col: number; row: number } | null
 }) {
@@ -504,6 +526,31 @@ function Envelopes({
           />
         </g>
       )}
+
+      {/* Where earlier strikes were downed. A battery lies within its
+          engagement radius of each of these. */}
+      {interceptions.map((mark, i) => (
+        <g key={`x${i}`} opacity={0.75}>
+          <circle
+            cx={mark.x}
+            cy={flip(mark.y)}
+            r={0.3}
+            fill="none"
+            stroke="#38bdf8"
+            strokeWidth={0.1}
+            strokeDasharray="0.16 0.12"
+          />
+          <text
+            x={mark.x}
+            y={flip(mark.y) + 0.17}
+            textAnchor="middle"
+            fontSize={0.46}
+            fill="#38bdf8"
+          >
+            ✕
+          </text>
+        </g>
+      ))}
 
       {strikes.map((strike, i) => {
         const end = strike.interceptedAt ?? strike.to

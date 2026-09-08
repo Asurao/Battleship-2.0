@@ -31,6 +31,7 @@ export type Action =
   | { type: 'queueStrike'; col: number; row: number }
   | { type: 'unqueueStrike'; id: string }
   | { type: 'commitStrikes' }
+  | { type: 'clearInterceptions' }
   | { type: 'resolveNext' }
   | { type: 'endTurn' }
   | { type: 'finishSetup' }
@@ -46,6 +47,7 @@ function newPlayer(id: PlayerId, name: string): PlayerState {
     ruins: [],
     craters: [],
     known: [],
+    interceptions: [],
     budget: ECONOMY.startingBudget,
     actionPoints: 0,
     hasBuiltAirfield: false,
@@ -172,9 +174,6 @@ export function reducer(state: MatchState, action: Action): MatchState {
       if (me.actionPoints < COMBAT.attackCost) return state
       if (sortiesLeft(state, source.id) <= 0) return state
       if (!isInRange(boardOf(state), source, action.col, action.row)) return state
-      // One target per cell — a second click is a mistake, not a double strike.
-      if (state.queued.some((q) => q.col === action.col && q.row === action.row))
-        return state
 
       return {
         ...state,
@@ -205,6 +204,14 @@ export function reducer(state: MatchState, action: Action): MatchState {
           ...state.players,
           [me.id]: { ...me, actionPoints: me.actionPoints + COMBAT.attackCost },
         },
+      }
+    }
+
+    case 'clearInterceptions': {
+      const me = state.players[state.activePlayer]
+      return {
+        ...state,
+        players: { ...state.players, [me.id]: { ...me, interceptions: [] } },
       }
     }
 
@@ -342,11 +349,14 @@ function resolveStrike(state: MatchState, order: QueuedStrike): MatchState {
   let enemyNext = enemy
   let knowledge: MatchState['players'][PlayerId]['known'] = me.known
 
+  let marks = me.interceptions
   if (interception.intercepted) {
     strike.outcome = 'intercepted'
     strike.interceptedAt = interception.at
     strike.interceptorId = interception.batteryId
-    // An intercepted strike teaches the attacker nothing about the target cell.
+    // Nothing is learned about the target cell, but where it fell is itself
+    // intelligence: a battery is within engagement radius of that point.
+    if (interception.at) marks = [...marks, interception.at]
   } else {
     enemyNext = {
       ...enemy,
@@ -386,7 +396,7 @@ function resolveStrike(state: MatchState, order: QueuedStrike): MatchState {
   }
 
   // Action points were already spent when the target was marked.
-  const meNext = { ...me, known: knowledge }
+  const meNext = { ...me, known: knowledge, interceptions: marks }
 
   const players = { ...state.players, [me.id]: meNext, [enemyId]: enemyNext }
   const defeated =

@@ -17,7 +17,7 @@ export function SetupPanel({
   onReady,
 }: SetupPanelProps) {
   return (
-    <div className="flex w-64 shrink-0 flex-col gap-3">
+    <div className="flex w-full flex-col gap-3">
       <div>
         <h2 className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
           Initial Deployment
