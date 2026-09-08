@@ -24,7 +24,8 @@ export function SetupPanel({
         </h2>
         <p className="mt-1 text-[11px] leading-snug text-slate-500">
           Field one of each required structure. Both sides deploy before anyone
-          fires, and the government&rsquo;s first payment arrives on turn 1.
+          fires, and the government pays nothing until turn 2 — turn 1 is fought
+          with what you bring.
         </p>
       </div>
 

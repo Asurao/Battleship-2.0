@@ -49,8 +49,20 @@ That mechanic is still the real fix for anti-air stacking; the radius reduction
 is a holding measure. If fleets of batteries still dominate after a playtest,
 activation is the thing to reach for.
 
+### Income does not arrive on turn 1 either
+Removing the starting budget alone was not enough: income still landed as turn 1
+opened, so a player had money before doing anything with the forces they
+deployed — the same problem in a different place. The government's first payment
+now arrives on turn 2, for both players.
+
+| | Turn 1 | Turn 2 | Turn 3 |
+|---|---|---|---|
+| Budget | 0 | 4 | 8 |
+
+First anti-air affordable turn 2, first extra airfield turn 3.
+
 ### Verified in play
-Turn 1 opens with budget 4 and 4 action points from the deployed command centre,
+Turn 1 opens with budget 0 and 4 action points from the deployed command centre,
 but only 1 sortie — so 2 action points sit unusable until a second airfield is
 bought. That squeeze is the intended pressure, and recon will absorb spare
 points permanently once it lands, since recon costs 1.

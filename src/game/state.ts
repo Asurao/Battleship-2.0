@@ -271,7 +271,10 @@ export function reducer(state: MatchState, action: Action): MatchState {
           selectedSourceId: null,
           queued: [],
           players: opening
-            ? { ...state.players, [next]: openTurn(state.players[next]) }
+            ? {
+                ...state.players,
+                [next]: openTurn(state.players[next], state.turn),
+              }
             : state.players,
         }
       }
@@ -279,6 +282,7 @@ export function reducer(state: MatchState, action: Action): MatchState {
       // Player 2 finishing their turn closes out the round.
       const roundComplete = state.activePlayer === 'p2'
       const hasNews = state.log.some((s) => s.attacker !== next)
+      const nextTurn = roundComplete ? state.turn + 1 : state.turn
       return {
         ...state,
         activePlayer: next,
@@ -287,13 +291,13 @@ export function reducer(state: MatchState, action: Action): MatchState {
         mode: 'build',
         selectedSourceId: null,
         queued: [],
-        turn: roundComplete ? state.turn + 1 : state.turn,
+        turn: nextTurn,
         // Keep what was fired AT the incoming player so they can be briefed on
         // it; drop their own strikes, which they already watched resolve.
         log: state.log.filter((s) => s.attacker !== next),
         players: {
           ...state.players,
-          [next]: openTurn(state.players[next]),
+          [next]: openTurn(state.players[next], nextTurn),
         },
       }
     }
@@ -421,14 +425,17 @@ export function setupComplete(player: PlayerState): boolean {
 
 
 /**
- * A turn opens with fresh income and an action budget sized by surviving
- * command infrastructure (GDD §11). Structures raised on earlier turns stop
- * being refundable, so the map cannot be rearranged for free.
+ * A turn opens with an action budget sized by surviving command infrastructure
+ * (GDD §11), and with the government's payment — except on turn 1. Paying on
+ * turn 1 would hand a player money before they had done anything with the
+ * forces they deployed, which is the same problem the starting budget had.
+ * Structures raised on earlier turns stop being refundable here, so the map
+ * cannot be rearranged for free.
  */
-function openTurn(player: PlayerState): PlayerState {
+function openTurn(player: PlayerState, turn: number): PlayerState {
   return {
     ...player,
-    budget: player.budget + ECONOMY.incomePerTurn,
+    budget: turn > 1 ? player.budget + ECONOMY.incomePerTurn : player.budget,
     actionPoints: actionPointsFor(player),
     structures: player.structures.map((s) =>
       s.refundable ? { ...s, refundable: false } : s,
