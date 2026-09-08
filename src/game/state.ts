@@ -170,6 +170,7 @@ export function reducer(state: MatchState, action: Action): MatchState {
       const source = me.structures.find((s) => s.id === state.selectedSourceId)
       if (!source) return state
       if (me.actionPoints < COMBAT.attackCost) return state
+      if (sortiesLeft(state, source.id) <= 0) return state
       if (!isInRange(boardOf(state), source, action.col, action.row)) return state
       // One target per cell — a second click is a mistake, not a double strike.
       if (state.queued.some((q) => q.col === action.col && q.row === action.row))
@@ -476,4 +477,18 @@ function refundOf(
     REQUIRED_SETUP.includes(kind) &&
     player.structures.filter((s) => s.kind === kind).length === 1
   return wouldBeFree ? 0 : STRUCTURE_COST[kind]
+}
+
+
+/** Missions this airfield has already committed or flown this turn. */
+export function sortiesUsed(state: MatchState, airfieldId: string): number {
+  const queued = state.queued.filter((q) => q.sourceId === airfieldId).length
+  const flown = state.log.filter(
+    (s) => s.attacker === state.activePlayer && s.sourceId === airfieldId,
+  ).length
+  return queued + flown
+}
+
+export function sortiesLeft(state: MatchState, airfieldId: string): number {
+  return COMBAT.sortiesPerAirfield - sortiesUsed(state, airfieldId)
 }

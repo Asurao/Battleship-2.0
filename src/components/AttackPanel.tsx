@@ -6,6 +6,8 @@ import type { QueuedStrike, Strike, Structure } from '../game/types'
 interface AttackPanelProps {
   board: BoardPreset
   airfields: Structure[]
+  /** Missions each airfield has left this turn, keyed by structure id. */
+  sorties: Record<string, number>
   selectedSourceId: string | null
   actionPoints: number
   queued: QueuedStrike[]
@@ -20,6 +22,7 @@ interface AttackPanelProps {
 export function AttackPanel({
   board,
   airfields,
+  sorties,
   selectedSourceId,
   actionPoints,
   queued,
@@ -53,11 +56,13 @@ export function AttackPanel({
           {airfields.map((field) => {
             const deepest = deepestReach(board, field)
             const selected = field.id === selectedSourceId
+            const left = sorties[field.id] ?? 0
+            const grounded = left <= 0 || deepest === null
             return (
               <button
                 key={field.id}
                 type="button"
-                disabled={resolving}
+                disabled={resolving || grounded}
                 onClick={() => onSelectSource(field.id)}
                 className={`flex w-full items-center justify-between gap-2 rounded border px-2.5 py-2 text-left transition disabled:opacity-40 ${
                   selected
@@ -76,8 +81,19 @@ export function AttackPanel({
                       : `Reaches enemy row ${deepest + 1} ahead`}
                   </span>
                 </span>
-                <span className="shrink-0 rounded bg-slate-900/80 px-1.5 py-0.5 font-mono text-[9px] text-slate-400">
-                  {field.hp}/{field.maxHp} HP
+                <span className="flex shrink-0 flex-col items-end gap-1">
+                  <span className="rounded bg-slate-900/80 px-1.5 py-0.5 font-mono text-[9px] text-slate-400">
+                    {field.hp}/{field.maxHp} HP
+                  </span>
+                  <span
+                    className={`rounded px-1.5 py-0.5 font-mono text-[9px] ${
+                      left > 0
+                        ? 'bg-emerald-500/15 text-emerald-300'
+                        : 'bg-slate-800 text-slate-600'
+                    }`}
+                  >
+                    {left > 0 ? `${left} sortie` : 'flown'}
+                  </span>
                 </span>
               </button>
             )
@@ -172,9 +188,10 @@ export function AttackPanel({
       )}
 
       <p className="mt-auto border-t border-slate-800 pt-2.5 text-[10px] leading-snug text-slate-600">
-        Each strike costs {COMBAT.attackCost} AP. Any battery within{' '}
-        {board.antiAirRadius} cells of the flight path gets a{' '}
-        {Math.round(COMBAT.antiAirHitChance * 100)}% shot at downing it.
+        Each airfield flies {COMBAT.sortiesPerAirfield} mission per turn and each
+        strike costs {COMBAT.attackCost} AP, so reaching further means building
+        both. Any battery within {board.antiAirRadius} cells of the flight path
+        gets a {Math.round(COMBAT.antiAirHitChance * 100)}% shot at downing it.
       </p>
     </div>
   )

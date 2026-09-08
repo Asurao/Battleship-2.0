@@ -23,8 +23,8 @@ export function SetupPanel({
           Initial Deployment
         </h2>
         <p className="mt-1 text-[11px] leading-snug text-slate-500">
-          Field one of each required structure, then spend your starting budget
-          on whatever else you want. Both sides deploy before anyone fires.
+          Field one of each required structure. Both sides deploy before anyone
+          fires, and the government&rsquo;s first payment arrives on turn 1.
         </p>
       </div>
 
@@ -81,7 +81,8 @@ export function SetupPanel({
       </div>
 
       <p className="text-[10px] leading-snug text-slate-600">
-        Click a structure you have placed to take it back and recover its cost.
+        Click a structure you have placed to move it. Each airfield flies one
+        mission per turn, so where this one sits decides what you can reach.
       </p>
 
       <button

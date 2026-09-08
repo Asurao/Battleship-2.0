@@ -74,7 +74,7 @@ export const BOARDS: Record<BoardId, BoardPreset> = {
     rows: 16,
     zones: buildZones(4, 8, 4),
     bomberRange: 12,
-    antiAirRadius: 3,
+    antiAirRadius: 2,
     cellSize: 'clamp(18px, 2.3vw, 32px)',
   },
   compact: {
@@ -85,7 +85,7 @@ export const BOARDS: Record<BoardId, BoardPreset> = {
     rows: 12,
     zones: buildZones(3, 6, 3),
     bomberRange: 9,
-    antiAirRadius: 2,
+    antiAirRadius: 1.5,
     cellSize: 'clamp(22px, 3vw, 42px)',
   },
 }
@@ -161,6 +161,13 @@ export const COMBAT = {
   /** Chance a single battery downs a strike crossing its envelope. */
   antiAirHitChance: 0.35,
   /**
+   * Missions one airfield can launch per turn. This is what makes airfields and
+   * command centres complementary rather than competing: command centres grant
+   * action points, airfields grant the capacity to spend them, so stacking
+   * either one alone leaves the surplus unusable.
+   */
+  sortiesPerAirfield: 1,
+  /**
    * Experiment switch. When true, ground scarred by a landed strike can never
    * be built on again, so every miss permanently denies a cell. Off by default:
    * it rewards uninformed shooting, which fights the recon-first design and
@@ -185,8 +192,12 @@ export const STRUCTURE_HP: Record<StructureKind, number> = {
  * snowballing engine and its counterweights arrive together.
  */
 export const ECONOMY = {
-  /** GDD §16: enough for one or two extra structures at deployment. */
-  startingBudget: 8,
+  /**
+   * Deployment fields the required trio and nothing else. GDD §16 allows a
+   * purse for one or two extras, but in practice it let a player deploy free
+   * structures and immediately buy more, so the opening never felt committed.
+   */
+  startingBudget: 0,
   /** Flat grant from the civilian government each turn. */
   incomePerTurn: 4,
   /** GDD §11: action point capacity scales with command infrastructure. */

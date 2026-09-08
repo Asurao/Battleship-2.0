@@ -5,6 +5,62 @@ Companion to `Battleship_2.0_GDD.docx` and `Battleship_2.0_Prototype_Roadmap.doc
 
 ---
 
+## Session 7 — Economy tuning: sorties, no starting budget, weaker anti-air
+
+Playtest feedback: the starting budget double-dipped, and every match converged
+on either stacking command centres or stacking anti-air.
+
+### Why those two dominated
+They were the only structures whose value compounds.
+- A command centre gives +2 action points **every remaining turn**, so it scales
+  with match length. A second airfield gave nothing, because attacking was
+  limited by action points, not by airfields.
+- Anti-air compounds multiplicatively: every battery crossing a flight path
+  rolled independently, so four cheap batteries made a corridor 82% lethal
+  (0.65^4 survival).
+
+### The fix, which was Alexander's idea and is better than cost escalation
+**One sortie per airfield per turn.** Command centres now grant action points
+and airfields grant the capacity to spend them, so stacking either alone leaves
+the surplus unusable. Going from two attacks a turn to three needs both another
+airfield (5) and another command centre (6) — about three turns of income.
+
+Cost escalation was considered and dropped: with sorties in place it is only
+needed for anti-air, and upgrades (M5) are the better answer to "what else do I
+spend on". Kept flat.
+
+### What changed
+- **Starting budget removed** (8 to 0). It let a player deploy three free
+  structures and immediately buy more, so the opening never felt committed.
+  First purchase now lands around turn 1-2 on income alone.
+- **One sortie per airfield.** An airfield that has flown shows as grounded, and
+  further targets from it are refused.
+- **Anti-air radius reduced** — Standard 3 to 2, Compact 2 to 1.5, keeping it
+  proportional to board width. Covering a corridor now takes more batteries, so
+  stacking costs more without changing the per-battery maths.
+
+### Deferred: active vs passive anti-air
+GDD §6 already says defenses should be an active investment — unactivated
+batteries at "reduced effectiveness", activation costing action points. The
+concrete mechanic we landed on (roughly 15% baseline, 35% activated, 1 AP per
+battery) is deferred, and has been written into GDD §18 as a deferred decision.
+
+That mechanic is still the real fix for anti-air stacking; the radius reduction
+is a holding measure. If fleets of batteries still dominate after a playtest,
+activation is the thing to reach for.
+
+### Verified in play
+Turn 1 opens with budget 4 and 4 action points from the deployed command centre,
+but only 1 sortie — so 2 action points sit unusable until a second airfield is
+bought. That squeeze is the intended pressure, and recon will absorb spare
+points permanently once it lands, since recon costs 1.
+
+### Where to pick up
+Recon, then the phase/timeline UI. Watch whether the sortie limit makes the
+early game feel starved rather than tight.
+
+---
+
 ## Session 6 — Economy, first pass
 
 Milestone order changed. Resources come before recon, and civilians/sanctions

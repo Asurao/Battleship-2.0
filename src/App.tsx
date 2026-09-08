@@ -15,6 +15,7 @@ const STRIKE_INTERVAL_MS = 850
 import {
   actionPointsFor,
   boardOf,
+  sortiesLeft,
   incomingSince,
   initialState,
   opponentOf,
@@ -49,6 +50,12 @@ export default function App() {
     [me.structures],
   )
   const source = airfields.find((s) => s.id === state.selectedSourceId) ?? null
+
+  const sorties = useMemo(
+    () =>
+      Object.fromEntries(airfields.map((f) => [f.id, sortiesLeft(state, f.id)])),
+    [airfields, state],
+  )
 
   /** Cells the selected airfield can actually reach, for the range overlay. */
   const reachable = useMemo(() => {
@@ -159,6 +166,7 @@ export default function App() {
           <AttackPanel
             board={board}
             airfields={airfields}
+            sorties={sorties}
             selectedSourceId={state.selectedSourceId}
             actionPoints={me.actionPoints}
             queued={state.queued}
@@ -241,7 +249,10 @@ export default function App() {
             </h2>
             <dl className="mt-2 space-y-1.5 text-[11px]">
               <Row label="Structures" value={String(me.structures.length)} />
-              <Row label="Airfields" value={String(airfields.length)} />
+              <Row
+                label="Airfields"
+                value={`${airfields.length} · ${Object.values(sorties).reduce((a, b) => a + b, 0)} sorties`}
+              />
               <Row label="Ruins" value={String(me.ruins.length)} />
               <Row label="Craters" value={String(me.craters.length)} />
               <Row
