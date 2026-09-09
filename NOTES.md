@@ -5,6 +5,32 @@ Companion to `Battleship_2.0_GDD.docx` and `Battleship_2.0_Prototype_Roadmap.doc
 
 ---
 
+## Session 10 — Recon course preview, briefing colours, End Turn guard
+
+### What changed
+- **Hovering a recon destination previews the whole course**: a dashed line from
+  the airfield plus every cell the flight would overfly, outlined in green.
+  This makes the diagonal advantage legible instead of theoretical — measured
+  from the same airfield at full range: straight ahead 13 cells, a shallow
+  diagonal 16, a full diagonal 17. Once units and upgrades arrive, choosing a
+  course for a purpose is a real decision, and it now reads before committing.
+- **Briefing entries are colour-coded by outcome** — rose for destroyed, orange
+  for damaged, sky for intercepted, slate for a miss, alongside the emerald
+  already used for overflights.
+- **End Turn asks twice when orders are pending.** It sits directly under
+  Commit, and ending a turn with unfired orders silently burns them along with
+  the whole turn's action points. With nothing queued it still ends on one
+  click, so the common case keeps no friction. It is also separated by a divider
+  and styled as a secondary action now.
+
+### Implementation note
+The End Turn confirmation is stored as a snapshot key (player, turn, mode,
+pending count) rather than a boolean, so any change of situation invalidates it
+during render. A boolean would have needed an effect to reset it, which lint
+correctly flags as cascading renders.
+
+---
+
 ## Session 9 — Recon
 
 The first half of the original M3. Civilians and sanctions remain deferred.

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer } from 'react'
+import { useEffect, useMemo, useReducer, useState } from 'react'
 import { AttackPanel } from './components/AttackPanel'
 import { BriefingScreen } from './components/BriefingScreen'
 import { GameOverScreen } from './components/GameOverScreen'
@@ -28,6 +28,12 @@ import {
 
 export default function App() {
   const [state, dispatch] = useReducer(reducer, undefined, initialState)
+  /**
+   * Which situation an End Turn confirmation was given for. Held as a snapshot
+   * rather than a flag so that any change — queueing, switching mode, the turn
+   * passing — invalidates it during render, with no effect to keep in sync.
+   */
+  const [confirmedFor, setConfirmedFor] = useState<string | null>(null)
 
   const board = boardOf(state)
   const me = state.players[state.activePlayer]
@@ -36,6 +42,9 @@ export default function App() {
   const scouting = state.mode === 'recon' && state.phase !== 'setup'
   const viewingEnemy = state.view === 'enemy'
   const resolving = state.phase === 'resolving'
+  const pending = state.queued.length + state.queuedRecon.length
+  const endKey = `${state.activePlayer}|${state.turn}|${state.mode}|${pending}`
+  const confirmEnd = confirmedFor === endKey
   const settingUp = state.phase === 'setup'
   const remaining = setupRemaining(me)
 
@@ -250,14 +259,28 @@ export default function App() {
           )}
 
           {!settingUp && (
-            <button
-              type="button"
-              onClick={() => dispatch({ type: 'endTurn' })}
-              disabled={resolving}
-              className="rounded border border-slate-500 bg-slate-800 px-4 py-2.5 text-sm font-medium text-slate-100 transition hover:border-slate-300 hover:bg-slate-700 disabled:opacity-40"
-            >
-              End Turn
-            </button>
+            <div className="mt-1 border-t border-slate-800 pt-3">
+              <button
+                type="button"
+                onClick={() => {
+                  // Ending a turn with orders on the table silently burns them
+                  // along with the whole turn's action points, and this button
+                  // sits right under Commit — so make that case ask twice.
+                  if (pending > 0 && !confirmEnd) setConfirmedFor(endKey)
+                  else dispatch({ type: 'endTurn' })
+                }}
+                disabled={resolving}
+                className={`w-full rounded border px-4 py-2 text-xs font-medium transition disabled:opacity-40 ${
+                  confirmEnd
+                    ? 'border-amber-400 bg-amber-500/20 text-amber-100 hover:bg-amber-500/30'
+                    : 'border-slate-700 bg-slate-900 text-slate-400 hover:border-slate-500 hover:text-slate-200'
+                }`}
+              >
+                {confirmEnd
+                  ? `Discard ${pending} order${pending === 1 ? '' : 's'} and end turn?`
+                  : 'End Turn'}
+              </button>
+            </div>
           )}
         </div>
 

@@ -1,4 +1,10 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  attackerPoint,
+  cellsAlongPath,
+  defenderPoint,
+  isInReconRange,
+} from '../game/combat'
 import { colLabels, structureDef, zoneForRow } from '../game/constants'
 import type { BoardPreset, ZoneDef } from '../game/constants'
 import type {
@@ -102,6 +108,10 @@ export function MapStack({
   const seam = useRef<HTMLDivElement>(null)
   const anim = useRef(0)
   const [hover, setHover] = useState<{ col: number; row: number } | null>(null)
+  const [enemyHover, setEnemyHover] = useState<{
+    col: number
+    row: number
+  } | null>(null)
 
   /**
    * Attack mode pulls the seam into view; build mode sits on your own half.
@@ -172,6 +182,27 @@ export function MapStack({
   const ownRows = Array.from({ length: board.rows }, (_, i) => i)
   const source = own.structures.find((s) => s.id === selectedSourceId) ?? null
 
+  /**
+   * What a recon flight to the hovered cell would uncover. Shown while planning
+   * so the course itself is a visible decision — a diagonal sweeps far more
+   * ground than a straight run, and that only reads if you can see it.
+   */
+  const reconPreview = useMemo(() => {
+    const launch = own.structures.find((s) => s.id === selectedSourceId)
+    if (mode !== 'recon' || !launch || !enemyHover) return null
+    if (!isInReconRange(board, launch, enemyHover.col, enemyHover.row))
+      return null
+    const from = attackerPoint(launch.col, launch.row)
+    const to = defenderPoint(enemyHover.col, enemyHover.row)
+    return {
+      from,
+      to,
+      cells: new Set(
+        cellsAlongPath(board, from, to).map((c) => `${c.col},${c.row}`),
+      ),
+    }
+  }, [mode, own.structures, selectedSourceId, enemyHover, board])
+
   const hoveredStructure = hover ? structureAt.get(`${hover.col},${hover.row}`) : null
   /** Whichever envelope the cursor is asking about, if any. */
   const preview =
@@ -235,6 +266,7 @@ export function MapStack({
                 board={board}
                 rows={enemyRows}
                 onClick={onEnemyCellClick}
+                onHover={setEnemyHover}
                 render={(col, row) => {
                   const key = `${col},${row}`
                   const seen = knownAt.get(key)
@@ -242,6 +274,10 @@ export function MapStack({
                   const inRange = reachable?.has(key) ?? false
                   const dimmed = reachable !== null && !inRange
                   const label = `${cols[col]}${row + 1}`
+                  const onCourse = reconPreview?.cells.has(key) ?? false
+                  const course = onCourse
+                    ? ' ring-2 ring-inset ring-emerald-300/80'
+                    : ''
                   if (order) {
                     return {
                       content: order.length > 1 ? `×${order.length}` : order[0],
@@ -277,18 +313,20 @@ export function MapStack({
                         : `${label} — ${KNOWLEDGE_WORD[seen.knowledge]}`,
                       disabled: !interactive || dimmed || mode === 'build',
                       opaque: true,
-                      className: `${KNOWLEDGE_STYLE[seen.knowledge]} ${dimmed ? 'opacity-40' : ''}`,
+                      className: `${KNOWLEDGE_STYLE[seen.knowledge]} ${dimmed ? 'opacity-40' : ''}${course}`,
                     }
                   }
                   return {
                     title: dimmed ? `${label} — out of range` : label,
                     disabled: !interactive || dimmed || mode === 'build',
                     opaque: true,
-                    className: dimmed
-                      ? 'bg-slate-900 opacity-30'
-                      : inRange
-                        ? 'bg-sky-950 ring-1 ring-inset ring-sky-400/40 hover:bg-sky-700'
-                        : 'bg-slate-800',
+                    className: onCourse
+                      ? `bg-emerald-600/50${course}`
+                      : dimmed
+                        ? 'bg-slate-900 opacity-30'
+                        : inRange
+                          ? 'bg-sky-950 ring-1 ring-inset ring-sky-400/40 hover:bg-sky-700'
+                          : 'bg-slate-800',
                   }
                 }}
               />
@@ -374,6 +412,7 @@ export function MapStack({
               <Envelopes
                 board={board}
                 reachRadius={reachRadius}
+                reconPreview={reconPreview}
                 interceptions={interceptions}
                 strikes={strikes}
                 flights={flights}
@@ -478,6 +517,7 @@ function CellGrid({
 function Envelopes({
   board,
   reachRadius,
+  reconPreview,
   strikes,
   flights,
   interceptions,
@@ -486,6 +526,7 @@ function Envelopes({
 }: {
   board: BoardPreset
   reachRadius: number
+  reconPreview: { from: Point; to: Point } | null
   strikes: Strike[]
   flights: ReconFlight[]
   interceptions: Point[]
@@ -587,6 +628,20 @@ function Envelopes({
           </text>
         </g>
       ))}
+
+      {/* The course being considered, before it is committed. */}
+      {reconPreview && (
+        <line
+          x1={reconPreview.from.x}
+          y1={flip(reconPreview.from.y)}
+          x2={reconPreview.to.x}
+          y2={flip(reconPreview.to.y)}
+          stroke="#34d399"
+          strokeWidth={0.1}
+          strokeDasharray="0.4 0.3"
+          opacity={0.7}
+        />
+      )}
 
       {/* Recon courses. Drawn under strikes so a busy turn still reads. */}
       {flights.map((flight) => {

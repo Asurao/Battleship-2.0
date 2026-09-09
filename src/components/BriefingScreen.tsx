@@ -75,9 +75,13 @@ export function BriefingScreen({
             return (
               <li
                 key={strike.id}
-                className="flex items-baseline justify-between gap-3 rounded border border-slate-800 bg-slate-900/60 px-3 py-2 text-[11px]"
+                className={`flex items-baseline justify-between gap-3 rounded border px-3 py-2 text-[11px] ${OUTCOME_TONE[strike.outcome].box}`}
               >
-                <span className="font-mono text-slate-400">{where}</span>
+                <span
+                  className={`font-mono ${OUTCOME_TONE[strike.outcome].text}`}
+                >
+                  {where}
+                </span>
                 <span className="flex-1 text-slate-300">
                   {describe(strike)}
                 </span>
@@ -96,6 +100,14 @@ export function BriefingScreen({
       </div>
     </div>
   )
+}
+
+/** Each outcome carries its own colour so the list reads at a glance. */
+const OUTCOME_TONE: Record<Strike['outcome'], { box: string; text: string }> = {
+  destroyed: { box: 'border-rose-500/60 bg-rose-500/20', text: 'text-rose-200' },
+  hit: { box: 'border-orange-500/50 bg-orange-500/15', text: 'text-orange-200' },
+  intercepted: { box: 'border-sky-500/50 bg-sky-500/15', text: 'text-sky-200' },
+  miss: { box: 'border-slate-800 bg-slate-900/60', text: 'text-slate-400' },
 }
 
 function describe(strike: Strike): string {
