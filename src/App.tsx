@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { AttackPanel } from './components/AttackPanel'
 import { BriefingScreen } from './components/BriefingScreen'
 import { GameOverScreen } from './components/GameOverScreen'
@@ -11,8 +11,6 @@ import { isInRange, isInReconRange } from './game/combat'
 import { BOARDS, ECONOMY, structureDef } from './game/constants'
 import type { BoardId } from './game/constants'
 
-/** Beat between strikes during resolution, so each one reads as its own event. */
-const STRIKE_INTERVAL_MS = 850
 import {
   actionPointsFor,
   boardOf,
@@ -20,14 +18,13 @@ import {
   reconSortiesLeft,
   sortiesLeft,
   incomingSince,
-  initialState,
   opponentOf,
-  reducer,
   setupRemaining,
 } from './game/state'
+import { useLocalMatch } from './match/useLocalMatch'
 
 export default function App() {
-  const [state, dispatch] = useReducer(reducer, undefined, initialState)
+  const { state, dispatch, you, yourTurn } = useLocalMatch()
   /**
    * Which situation an End Turn confirmation was given for. Held as a snapshot
    * rather than a flag so that any change — queueing, switching mode, the turn
@@ -36,29 +33,21 @@ export default function App() {
   const [confirmedFor, setConfirmedFor] = useState<string | null>(null)
 
   const board = boardOf(state)
-  const me = state.players[state.activePlayer]
-  const enemy = state.players[opponentOf(state.activePlayer)]
+  // Rendered from this client's seat, which is not necessarily the seat whose
+  // turn it is — hot-seat is the special case where those always coincide.
+  const me = state.players[you]
+  const enemy = state.players[opponentOf(you)]
   const attacking = state.mode === 'attack' && state.phase !== 'setup'
   const scouting = state.mode === 'recon' && state.phase !== 'setup'
   const viewingEnemy = state.view === 'enemy'
   const resolving = state.phase === 'resolving'
+  /** Anything that would change the board is gated on holding the turn. */
+  const canAct = yourTurn && !resolving
   const pending = state.queued.length + state.queuedRecon.length
   const endKey = `${state.activePlayer}|${state.turn}|${state.mode}|${pending}`
   const confirmEnd = confirmedFor === endKey
   const settingUp = state.phase === 'setup'
   const remaining = setupRemaining(me)
-
-  // Drain the committed queue one strike at a time.
-  useEffect(() => {
-    if (state.phase !== 'resolving') return
-    const timer = setTimeout(
-      () => dispatch({ type: 'resolveNext' }),
-      STRIKE_INTERVAL_MS,
-    )
-    return () => clearTimeout(timer)
-    // Both queues drain here, so both lengths must retrigger the timer —
-    // watching only the strike queue stalls the run after the last recon.
-  }, [state.phase, state.queued.length, state.queuedRecon.length])
 
   const airfields = useMemo(
     () => me.structures.filter((s) => s.kind === 'airfield'),
@@ -179,21 +168,21 @@ export default function App() {
               <Tab
                 active={state.mode === 'build'}
                 onClick={() => dispatch({ type: 'setMode', mode: 'build' })}
-                disabled={resolving}
+                disabled={!canAct}
               >
                 Build
               </Tab>
               <Tab
                 active={scouting}
                 onClick={() => dispatch({ type: 'setMode', mode: 'recon' })}
-                disabled={resolving}
+                disabled={!canAct}
               >
                 Recon
               </Tab>
               <Tab
                 active={attacking}
                 onClick={() => dispatch({ type: 'setMode', mode: 'attack' })}
-                disabled={resolving}
+                disabled={!canAct}
               >
                 Attack
               </Tab>
@@ -216,7 +205,7 @@ export default function App() {
               selectedSourceId={state.selectedSourceId}
               queued={state.queuedRecon}
               results={outgoingRecon}
-              resolving={resolving}
+              resolving={!canAct}
               onSelectSource={(id) => dispatch({ type: 'selectSource', id })}
               onRemoveTarget={(id) => dispatch({ type: 'unqueueRecon', id })}
             />
@@ -229,7 +218,7 @@ export default function App() {
               actionPoints={me.actionPoints}
               queued={state.queued}
               results={outgoing}
-              resolving={resolving}
+              resolving={!canAct}
               onSelectSource={(id) => dispatch({ type: 'selectSource', id })}
               onRemoveTarget={(id) => dispatch({ type: 'unqueueStrike', id })}
             />
@@ -239,14 +228,14 @@ export default function App() {
               onSelect={(kind) => dispatch({ type: 'selectKind', kind })}
               placed={me.structures}
               budget={me.budget}
-              disabled={viewingEnemy}
+              disabled={viewingEnemy || !canAct}
             />
           )}
 
           {!settingUp && (state.queued.length > 0 || state.queuedRecon.length > 0) && (
             <button
               type="button"
-              disabled={resolving}
+              disabled={!canAct}
               onClick={() => dispatch({ type: 'commitStrikes' })}
               className="rounded border border-rose-400/70 bg-rose-500/20 px-4 py-2.5 text-sm font-semibold text-rose-100 transition hover:bg-rose-500/40 disabled:opacity-40"
             >
@@ -304,7 +293,7 @@ export default function App() {
             selectedSourceId={state.selectedSourceId}
             selectedKind={state.selectedKind}
             previewCode={attacking ? null : structureDef(state.selectedKind).code}
-            interactive={!resolving}
+            interactive={canAct}
             onEnemyCellClick={(col, row) => {
               // Repeat clicks stack operations on one cell; removal is done
               // from the plan lists, so a defended target can be hit twice.
