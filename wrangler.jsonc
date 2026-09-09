@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "battleship-20",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-09-01",
+  // Static assets are served first; anything unmatched falls through to the
+  // Worker, which is how /ws reaches the Durable Object.
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "MATCH", "class_name": "MatchRoom" }]
+  },
+  // SQLite-backed Durable Objects are the ones available on the free plan.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["MatchRoom"] }]
+}

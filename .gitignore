@@ -25,3 +25,6 @@ dist-ssr
 
 # Word lock files
 ~$*
+
+# Wrangler local state
+.wrangler/

@@ -21,10 +21,10 @@ import {
   opponentOf,
   setupRemaining,
 } from './game/state'
-import { useLocalMatch } from './match/useLocalMatch'
+import type { Match } from './match/types'
 
-export default function App() {
-  const { state, dispatch, you, yourTurn } = useLocalMatch()
+export default function App({ match }: { match: Match }) {
+  const { state, dispatch, you, yourTurn, waitingOn } = match
   /**
    * Which situation an End Turn confirmation was given for. Held as a snapshot
    * rather than a flag so that any change — queueing, switching mode, the turn
@@ -101,7 +101,10 @@ export default function App() {
     )
   }
 
-  if (state.phase === 'pass') {
+  // Briefings and hand-offs belong to the player whose turn is opening. The
+  // other client stays on the board behind a waiting banner, rather than being
+  // shown someone else's intelligence report addressed to them.
+  if (state.phase === 'pass' && yourTurn) {
     return (
       <div className="h-full bg-slate-950 text-slate-200">
         <PassScreen
@@ -115,7 +118,7 @@ export default function App() {
     )
   }
 
-  if (state.phase === 'briefing') {
+  if (state.phase === 'briefing' && yourTurn) {
     return (
       <div className="h-full overflow-auto bg-slate-950 text-slate-200">
         <BriefingScreen
@@ -143,6 +146,11 @@ export default function App() {
 
       <main className="flex min-h-0 flex-1 items-start justify-center gap-8 overflow-auto px-6 py-5">
         <div className="flex w-64 shrink-0 flex-col gap-3">
+          {waitingOn && (
+            <div className="rounded border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-[11px] leading-snug text-sky-200">
+              {waitingOn}
+            </div>
+          )}
           <div className="rounded border border-slate-700 bg-slate-900/60 px-3 py-2.5">
             <div className="flex items-baseline justify-between">
               <span className="text-sm font-semibold text-slate-100">

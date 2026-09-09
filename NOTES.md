@@ -5,6 +5,66 @@ Companion to `Battleship_2.0_GDD.docx` and `Battleship_2.0_Prototype_Roadmap.doc
 
 ---
 
+## Session 11 — Networked multiplayer, part one
+
+Multiplayer moved forward from M4 to now, so the game can be tested with people
+remotely. The order is unchanged — multiplayer was the next milestone anyway —
+but the scope grew from two tabs on one machine to real networked play.
+
+### Why a server rather than peer-to-peer
+Alexander is not worried about cheating at this stage, which removes one
+argument, but two stronger ones remain:
+- **Determinism.** Interception rolls use `Math.random` and every id comes from
+  a module-level counter. Two browsers running the same reducer would roll
+  different dice and mint different ids, so one player would see "shot down"
+  where the other saw "airfield damaged". That is far worse than cheating: it is
+  silent, and each client is individually consistent.
+- **Reconnection.** Friends refresh, close laptops and lose wifi. With state on
+  the server they rejoin; with state in a tab the match is gone.
+
+Peer-to-peer also needs a signalling server regardless, so it buys nothing.
+
+### What was built
+- **A Match seam** (`src/match/types.ts`) carrying state, dispatch, which seat
+  you occupy, and whether you may act. Hot-seat and networked play are two
+  implementations of it; `App` renders from your seat either way.
+- **A Durable Object per match** (`worker/MatchRoom.ts`) holding authoritative
+  state in storage and relaying it over hibernatable WebSockets. State lives in
+  storage rather than memory because hibernation evicts the object while players
+  think — which is what keeps an idle match free, and means matches also survive
+  a browser close.
+- **Seats claimed by browser token**, not arrival order, so a refresh resumes
+  the same side and a third viewer gets "match is full".
+- **Landing screen**: host (choosing the board, which cannot change later), join
+  by code, or hot-seat. The match code lives in the URL hash, so the link is the
+  match.
+- The pass screen is stepped through server-side online, since there is no
+  device to hand over.
+
+### Deviation from what was planned
+Deployment stays **sequential**, not simultaneous. Making it simultaneous needs
+the reducer to accept "who is acting" rather than assuming `activePlayer` — the
+same change simultaneous *turns* will need. Doing it once, properly, in part two
+is better than a hack here.
+
+### Bug found in testing
+Briefings rendered on both clients, so the player who had just finished their
+turn was shown their opponent's intelligence report addressed to them, with
+zeroes in it. Briefings and hand-offs now render only for the player whose turn
+is opening; the other client stays on its board behind the waiting banner.
+
+### Testing two players in one browser
+Two tabs share `localStorage` and would fight over one seat, so `?seat=b`
+selects a second identity. The waiting screen links to it. That also delivers
+the roadmap's original "two-tab multiplayer" for free.
+
+### Where to pick up
+Part two: simultaneous turns and deployment, via an explicit actor on reducer
+actions. Then deploy — that needs Alexander's Cloudflare account (`wrangler
+login`), which is the one step that cannot be done for him.
+
+---
+
 ## Session 10 — Recon course preview, briefing colours, End Turn guard
 
 ### What changed
