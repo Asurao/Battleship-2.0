@@ -5,6 +5,53 @@ Companion to `Battleship_2.0_GDD.docx` and `Battleship_2.0_Prototype_Roadmap.doc
 
 ---
 
+## Session 12 — State hygiene, then simultaneous deployment
+
+### The bugs, and their shared cause
+Moving state to the server moved things that were never match state. Panel mode,
+selected structure and selected airfield were all shared, so one player's
+palette selection was the other's. Order queues were global too, so a player's
+marked targets were drawn on the opponent's screen — and in the opponent's
+coordinate frame, which put them on the wrong half of the map.
+
+Fixed by putting view state back in the client and moving order queues onto the
+player who owns them. Actions now carry what they need (`placeStructure` carries
+the kind, `queueStrike` carries the source airfield) rather than reading UI
+state, which also makes them self-contained as a network protocol.
+
+### The reducer takes an actor
+`reducer(state, action, actor)` rather than assuming `activePlayer`. The
+transport already knows who is acting: hot-seat passes the active player, the
+server passes the seat the socket belongs to. This is what made simultaneous
+deployment a small change rather than a rewrite.
+
+### Simultaneous deployment
+Online, both players field their forces at once and the match starts when both
+declare ready — no waiting while the other places three buildings.
+
+Hot-seat keeps the hand-off, because one device cannot show two secret maps at
+once. Both fall out of the same rule: `finishSetup` starts the match if the
+opponent is already ready, and otherwise hands over. Online the server steps
+straight past the hand-off; hot-seat shows it.
+
+The worker also had to stop gating actions on `activePlayer` during setup, since
+during deployment both seats are legitimately acting — each only ever touching
+their own territory.
+
+### Verified across two live clients
+Player 2 deployed first without waiting, declared ready, saw "waiting for your
+opponent to finish deploying", and the match began the moment Player 1 was
+ready. Hot-seat still passes the device correctly. No console errors either way.
+
+### Where to pick up
+Pass 2 — the resolution experience: the defender watches incoming operations
+land on their own map, preceded by an alert so they are looking, at a slower
+pace, with a scrollable match log replacing the briefing interstitial. Board
+selector comes out of the game screen (it lives on the landing screen now) and
+Situation gets slimmed into the left column.
+
+---
+
 ## Session 11 — Networked multiplayer, part one
 
 Multiplayer moved forward from M4 to now, so the game can be tested with people

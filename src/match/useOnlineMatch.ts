@@ -109,16 +109,28 @@ export function useOnlineMatch(code: string, boardId?: BoardId): Match | null {
   }
   if (!net.state) return null
 
+  const me = net.state.players[net.you]
+  const deploying = net.state.phase === 'setup'
+  // During deployment neither side is waiting on the other; you act until you
+  // declare yourself ready, and the match starts when both have.
+  const yourTurn =
+    net.status === 'online' &&
+    (deploying ? !me.setupDone : net.you === net.state.activePlayer)
+
   return {
     state: net.state,
     dispatch,
     you: net.you,
-    yourTurn: net.you === net.state.activePlayer && net.status === 'online',
+    yourTurn,
     status: net.status,
     waitingOn: !net.opponentHere
       ? 'Waiting for your opponent to join…'
-      : net.you !== net.state.activePlayer
-        ? `${net.state.players[net.state.activePlayer].name} is taking their turn…`
-        : null,
+      : deploying
+        ? me.setupDone
+          ? 'Waiting for your opponent to finish deploying…'
+          : null
+        : net.you !== net.state.activePlayer
+          ? `${net.state.players[net.state.activePlayer].name} is taking their turn…`
+          : null,
   }
 }

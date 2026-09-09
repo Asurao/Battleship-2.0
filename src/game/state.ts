@@ -316,31 +316,35 @@ export function reducer(
     case 'finishSetup': {
       const me = state.players[actor]
       if (!setupComplete(me)) return state
-      return {
-        ...state,
-        phase: 'pass',
-        passOrigin: 'setup',
-        players: { ...state.players, [me.id]: { ...me, setupDone: true } },
+      const players = {
+        ...state.players,
+        [me.id]: { ...me, setupDone: true },
       }
+      const opponent = players[opponentOf(actor)]
+
+      // Deployment is not turn-based: each side fields its forces whenever it
+      // likes, and the war starts once both are ready.
+      if (opponent.setupDone) {
+        return {
+          ...state,
+          phase: 'planning',
+          activePlayer: 'p1',
+          players: { ...players, p1: openTurn(players.p1, state.turn) },
+        }
+      }
+
+      // Only hot-seat gets this far: one device means the other player still
+      // has to be handed it. Online, the server steps straight past.
+      return { ...state, phase: 'pass', passOrigin: 'setup', players }
     }
 
     case 'confirmPass': {
       const next = opponentOf(state.activePlayer)
 
-      // Still fielding starting forces: hand over and keep setting up.
+      // Still fielding starting forces: hand the device to the other side.
+      // finishSetup has already dealt with the case where both are ready.
       if (state.passOrigin === 'setup') {
-        const opening = state.players[next].setupDone
-        return {
-          ...state,
-          activePlayer: next,
-          phase: opening ? 'planning' : 'setup',
-          players: opening
-            ? {
-                ...state.players,
-                [next]: openTurn(state.players[next], state.turn),
-              }
-            : state.players,
-        }
+        return { ...state, activePlayer: next, phase: 'setup' }
       }
 
       // Player 2 finishing their turn closes out the round.

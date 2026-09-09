@@ -84,9 +84,12 @@ export class MatchRoom extends DurableObject {
     const state = await this.ctx.storage.get<MatchState>('state')
     if (!state) return this.send(ws, { t: 'error', reason: 'No match yet' })
 
-    // Guards against a stray click landing in the moment the turn changes
-    // hands, rather than against cheating.
-    if (action.type !== 'resetMatch' && meta.seat !== state.activePlayer) {
+    // Deployment is simultaneous, so both seats may act during setup; each is
+    // only ever touching their own territory. Once the war starts, actions are
+    // gated on holding the turn — a guard against a stray click landing as the
+    // turn changes hands, rather than against cheating.
+    const openToBoth = state.phase === 'setup' || action.type === 'resetMatch'
+    if (!openToBoth && meta.seat !== state.activePlayer) {
       return this.send(ws, { t: 'error', reason: 'Not your turn' })
     }
 
@@ -97,7 +100,7 @@ export class MatchRoom extends DurableObject {
     let next = reducer(state, action, actor)
     // There is no device to hand over online, so the pass screen has nothing to
     // say. Step straight through it to the incoming player's briefing.
-    if (next.phase === 'pass') next = reducer(next, { type: 'confirmPass' })
+    while (next.phase === 'pass') next = reducer(next, { type: 'confirmPass' })
     await this.ctx.storage.put('state', next)
     await this.broadcast()
     if (next.phase === 'resolving') this.scheduleResolve()
