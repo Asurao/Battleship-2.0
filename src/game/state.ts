@@ -20,9 +20,7 @@ import type { BoardId, BoardPreset } from './constants'
 import type {
   CellKnowledge,
   KnownCell,
-  MapView,
   MatchState,
-  PlanMode,
   PlayerId,
   PlayerState,
   QueuedRecon,
@@ -33,14 +31,10 @@ import type {
 } from './types'
 
 export type Action =
-  | { type: 'selectKind'; kind: StructureKind }
-  | { type: 'setView'; view: MapView }
-  | { type: 'setMode'; mode: PlanMode }
-  | { type: 'selectSource'; id: string | null }
-  | { type: 'placeStructure'; col: number; row: number }
+  | { type: 'placeStructure'; kind: StructureKind; col: number; row: number }
   | { type: 'removeStructure'; id: string }
-  | { type: 'queueStrike'; col: number; row: number }
-  | { type: 'queueRecon'; col: number; row: number }
+  | { type: 'queueStrike'; sourceId: string; col: number; row: number }
+  | { type: 'queueRecon'; sourceId: string; col: number; row: number }
   | { type: 'unqueueRecon'; id: string }
   | { type: 'unqueueStrike'; id: string }
   | { type: 'commitStrikes' }
@@ -59,6 +53,10 @@ function newPlayer(id: PlayerId, name: string): PlayerState {
     structures: [],
     ruins: [],
     craters: [],
+    queued: [],
+    queuedRecon: [],
+    flownThisTurn: [],
+    scoutedThisTurn: [],
     known: [],
     interceptions: [],
     budget: ECONOMY.startingBudget,
@@ -81,14 +79,8 @@ export function initialState(boardId: BoardId = DEFAULT_BOARD): MatchState {
     // Both sides field their starting structures before a shot is fired, so
     // nobody spends turn 1 bombing an empty map.
     phase: 'setup',
-    view: 'own',
-    mode: 'build',
-    selectedKind: 'airfield',
-    selectedSourceId: null,
     players: { p1: newPlayer('p1', 'Player 1'), p2: newPlayer('p2', 'Player 2') },
     passOrigin: 'setup',
-    queued: [],
-    queuedRecon: [],
     log: [],
     reconLog: [],
     winner: null,
@@ -106,28 +98,21 @@ export function incomingSince(state: MatchState, player: PlayerId): Strike[] {
 
 let nextId = 0
 
-export function reducer(state: MatchState, action: Action): MatchState {
+/**
+ * `actor` is who is taking the action, which the transport knows and the state
+ * should not have to guess. Hot-seat passes the active player; the server passes
+ * the seat the socket belongs to.
+ */
+export function reducer(
+  state: MatchState,
+  action: Action,
+  actor: PlayerId = state.activePlayer,
+): MatchState {
   if (state.phase === 'gameover' && action.type !== 'resetMatch') return state
 
   switch (action.type) {
-    case 'selectKind':
-      return { ...state, selectedKind: action.kind }
-
-    case 'setView':
-      return { ...state, view: action.view }
-
-    case 'setMode':
-      return {
-        ...state,
-        mode: action.mode,
-        view: action.mode === 'attack' ? 'enemy' : 'own',
-      }
-
-    case 'selectSource':
-      return { ...state, selectedSourceId: action.id }
-
     case 'placeStructure': {
-      const me = state.players[state.activePlayer]
+      const me = state.players[actor]
       const blocked =
         me.structures.some((s) => s.col === action.col && s.row === action.row) ||
         me.ruins.some((r) => r.col === action.col && r.row === action.row) ||
@@ -135,17 +120,17 @@ export function reducer(state: MatchState, action: Action): MatchState {
           me.craters.some((c) => c.col === action.col && c.row === action.row))
       if (blocked) return state
 
-      const cost = placementCost(state, me, state.selectedKind)
+      const cost = placementCost(state, me, action.kind)
       if (cost > me.budget) return state
 
       const structure = {
         id: `s${nextId++}`,
-        kind: state.selectedKind,
+        kind: action.kind,
         owner: me.id,
         col: action.col,
         row: action.row,
-        hp: STRUCTURE_HP[state.selectedKind],
-        maxHp: STRUCTURE_HP[state.selectedKind],
+        hp: STRUCTURE_HP[action.kind],
+        maxHp: STRUCTURE_HP[action.kind],
         refundable: true,
       }
       return {
@@ -156,21 +141,18 @@ export function reducer(state: MatchState, action: Action): MatchState {
             ...me,
             budget: me.budget - cost,
             structures: [...me.structures, structure],
-            hasBuiltAirfield:
-              me.hasBuiltAirfield || state.selectedKind === 'airfield',
+            hasBuiltAirfield: me.hasBuiltAirfield || action.kind === 'airfield',
           },
         },
       }
     }
 
     case 'removeStructure': {
-      const me = state.players[state.activePlayer]
+      const me = state.players[actor]
       const target = me.structures.find((s) => s.id === action.id)
       if (!target || !target.refundable) return state
       return {
         ...state,
-        selectedSourceId:
-          state.selectedSourceId === action.id ? null : state.selectedSourceId,
         players: {
           ...state.players,
           [me.id]: {
@@ -183,122 +165,125 @@ export function reducer(state: MatchState, action: Action): MatchState {
     }
 
     case 'queueStrike': {
-      const me = state.players[state.activePlayer]
-      const source = me.structures.find((s) => s.id === state.selectedSourceId)
+      const me = state.players[actor]
+      const source = me.structures.find((s) => s.id === action.sourceId)
       if (!source) return state
       if (me.actionPoints < COMBAT.attackCost) return state
-      if (sortiesLeft(state, source.id) <= 0) return state
+      if (sortiesLeft(me, source.id) <= 0) return state
       if (!isInRange(boardOf(state), source, action.col, action.row)) return state
 
       return {
         ...state,
-        queued: [
-          ...state.queued,
-          {
-            id: `q${nextId++}`,
-            sourceId: source.id,
-            col: action.col,
-            row: action.row,
-          },
-        ],
         players: {
           ...state.players,
-          [me.id]: { ...me, actionPoints: me.actionPoints - COMBAT.attackCost },
+          [me.id]: {
+            ...me,
+            actionPoints: me.actionPoints - COMBAT.attackCost,
+            queued: [
+              ...me.queued,
+              {
+                id: `q${nextId++}`,
+                sourceId: source.id,
+                col: action.col,
+                row: action.row,
+              },
+            ],
+          },
         },
       }
     }
 
     case 'queueRecon': {
-      const me = state.players[state.activePlayer]
-      const source = me.structures.find((s) => s.id === state.selectedSourceId)
+      const me = state.players[actor]
+      const source = me.structures.find((s) => s.id === action.sourceId)
       if (!source) return state
       if (me.actionPoints < COMBAT.reconCost) return state
-      if (reconSortiesLeft(state, source.id) <= 0) return state
+      if (reconSortiesLeft(me, source.id) <= 0) return state
       if (!isInReconRange(boardOf(state), source, action.col, action.row))
         return state
 
       return {
         ...state,
-        queuedRecon: [
-          ...state.queuedRecon,
-          {
-            id: `r${nextId++}`,
-            sourceId: source.id,
-            col: action.col,
-            row: action.row,
-          },
-        ],
         players: {
           ...state.players,
-          [me.id]: { ...me, actionPoints: me.actionPoints - COMBAT.reconCost },
+          [me.id]: {
+            ...me,
+            actionPoints: me.actionPoints - COMBAT.reconCost,
+            queuedRecon: [
+              ...me.queuedRecon,
+              {
+                id: `r${nextId++}`,
+                sourceId: source.id,
+                col: action.col,
+                row: action.row,
+              },
+            ],
+          },
         },
       }
     }
 
     case 'unqueueRecon': {
-      const order = state.queuedRecon.find((q) => q.id === action.id)
-      if (!order) return state
-      const me = state.players[state.activePlayer]
+      const me = state.players[actor]
+      if (!me.queuedRecon.some((q) => q.id === action.id)) return state
       return {
         ...state,
-        queuedRecon: state.queuedRecon.filter((q) => q.id !== action.id),
         players: {
           ...state.players,
-          [me.id]: { ...me, actionPoints: me.actionPoints + COMBAT.reconCost },
+          [me.id]: {
+            ...me,
+            actionPoints: me.actionPoints + COMBAT.reconCost,
+            queuedRecon: me.queuedRecon.filter((q) => q.id !== action.id),
+          },
         },
       }
     }
 
     case 'unqueueStrike': {
-      const order = state.queued.find((q) => q.id === action.id)
-      if (!order) return state
-      const me = state.players[state.activePlayer]
+      const me = state.players[actor]
+      if (!me.queued.some((q) => q.id === action.id)) return state
       return {
         ...state,
-        queued: state.queued.filter((q) => q.id !== action.id),
         players: {
           ...state.players,
-          [me.id]: { ...me, actionPoints: me.actionPoints + COMBAT.attackCost },
+          [me.id]: {
+            ...me,
+            actionPoints: me.actionPoints + COMBAT.attackCost,
+            queued: me.queued.filter((q) => q.id !== action.id),
+          },
         },
       }
     }
 
-    case 'clearInterceptions': {
-      const me = state.players[state.activePlayer]
-      return {
-        ...state,
-        players: { ...state.players, [me.id]: { ...me, interceptions: [] } },
-      }
+    case 'commitStrikes': {
+      const me = state.players[actor]
+      if (me.queued.length === 0 && me.queuedRecon.length === 0) return state
+      return { ...state, phase: 'resolving' }
     }
 
-    case 'commitStrikes':
-      if (state.queued.length === 0 && state.queuedRecon.length === 0)
-        return state
-      return { ...state, phase: 'resolving' }
-
     case 'resolveNext': {
+      const me = state.players[state.activePlayer]
       // GDD §12: recon resolves before attacks. Because both were committed
       // together, intel from this turn cannot inform this turn's strikes.
-      const [nextRecon, ...restRecon] = state.queuedRecon
+      const [nextRecon, ...restRecon] = me.queuedRecon
       if (nextRecon) {
         const flown = resolveRecon(state, nextRecon)
-        const more = restRecon.length > 0 || state.queued.length > 0
-        return {
-          ...flown,
+        const drained = withQueues(flown, state.activePlayer, {
           queuedRecon: restRecon,
-          phase: more ? 'resolving' : 'planning',
-        }
+        })
+        const more = restRecon.length > 0 || me.queued.length > 0
+        return { ...drained, phase: more ? 'resolving' : 'planning' }
       }
 
-      const [next, ...rest] = state.queued
+      const [next, ...rest] = me.queued
       if (!next) return { ...state, phase: 'planning' }
       const resolved = resolveStrike(state, next)
+      const drained = withQueues(resolved, state.activePlayer, { queued: rest })
       return {
-        ...resolved,
-        queued: rest,
+        ...drained,
         // Hold on the resolving screen until the last strike has landed.
         phase:
-          resolved.phase === 'gameover'
+          drained.phase === 'gameover'
             ? 'gameover'
             : rest.length > 0
               ? 'resolving'
@@ -306,31 +291,36 @@ export function reducer(state: MatchState, action: Action): MatchState {
       }
     }
 
-    case 'finishSetup': {
-      const me = state.players[state.activePlayer]
-      if (!setupComplete(me)) return state
+    case 'clearInterceptions': {
+      const me = state.players[actor]
       return {
         ...state,
-        phase: 'pass',
-        passOrigin: 'setup',
-        players: {
-          ...state.players,
-          [me.id]: { ...me, setupDone: true },
-        },
+        players: { ...state.players, [me.id]: { ...me, interceptions: [] } },
       }
     }
 
     case 'endTurn': {
       // Unfired orders are abandoned; their action points die with the turn.
-      const me = state.players[state.activePlayer]
+      const me = state.players[actor]
       return {
         ...state,
         phase: 'pass',
         passOrigin: 'turn',
-        selectedSourceId: null,
-        queued: [],
-        queuedRecon: [],
-        players: { ...state.players, [me.id]: { ...me, actionPoints: 0 } },
+        players: {
+          ...state.players,
+          [me.id]: { ...me, actionPoints: 0, queued: [], queuedRecon: [] },
+        },
+      }
+    }
+
+    case 'finishSetup': {
+      const me = state.players[actor]
+      if (!setupComplete(me)) return state
+      return {
+        ...state,
+        phase: 'pass',
+        passOrigin: 'setup',
+        players: { ...state.players, [me.id]: { ...me, setupDone: true } },
       }
     }
 
@@ -344,11 +334,6 @@ export function reducer(state: MatchState, action: Action): MatchState {
           ...state,
           activePlayer: next,
           phase: opening ? 'planning' : 'setup',
-          view: 'own',
-          mode: 'build',
-          selectedSourceId: null,
-          queued: [],
-          queuedRecon: [],
           players: opening
             ? {
                 ...state.players,
@@ -370,14 +355,9 @@ export function reducer(state: MatchState, action: Action): MatchState {
         ...state,
         activePlayer: next,
         phase: hasNews ? 'briefing' : 'planning',
-        view: 'own',
-        mode: 'build',
-        selectedSourceId: null,
-        queued: [],
-        queuedRecon: [],
         turn: nextTurn,
         // Keep what was fired AT the incoming player so they can be briefed on
-        // it; drop their own strikes, which they already watched resolve.
+        // it; drop their own, which they already watched resolve.
         log: state.log.filter((s) => s.attacker !== next),
         reconLog: state.reconLog.filter((r) => r.attacker !== next),
         players: {
@@ -474,7 +454,12 @@ function resolveStrike(state: MatchState, order: QueuedStrike): MatchState {
   }
 
   // Action points were already spent when the target was marked.
-  const meNext = { ...me, known: knowledge, interceptions: marks }
+  const meNext = {
+    ...me,
+    known: knowledge,
+    interceptions: marks,
+    flownThisTurn: [...me.flownThisTurn, source.id],
+  }
 
   const players = { ...state.players, [me.id]: meNext, [enemyId]: enemyNext }
   const defeated =
@@ -552,6 +537,7 @@ function resolveRecon(state: MatchState, order: QueuedRecon): MatchState {
         interceptions: interception.at
           ? [...me.interceptions, interception.at]
           : me.interceptions,
+        scoutedThisTurn: [...me.scoutedThisTurn, source.id],
       },
     },
   }
@@ -594,6 +580,10 @@ function openTurn(player: PlayerState, turn: number): PlayerState {
     ...player,
     budget: turn > 1 ? player.budget + ECONOMY.incomePerTurn : player.budget,
     actionPoints: actionPointsFor(player),
+    queued: [],
+    queuedRecon: [],
+    flownThisTurn: [],
+    scoutedThisTurn: [],
     structures: player.structures.map((s) =>
       s.refundable ? { ...s, refundable: false } : s,
     ),
@@ -644,26 +634,35 @@ function refundOf(
 }
 
 
-/** Missions this airfield has already committed or flown this turn. */
-export function sortiesUsed(state: MatchState, airfieldId: string): number {
-  const queued = state.queued.filter((q) => q.sourceId === airfieldId).length
-  const flown = state.log.filter(
-    (s) => s.attacker === state.activePlayer && s.sourceId === airfieldId,
-  ).length
-  return queued + flown
+/** Replaces one player's order queues without disturbing the rest of the state. */
+function withQueues(
+  state: MatchState,
+  id: PlayerId,
+  patch: Partial<Pick<PlayerState, 'queued' | 'queuedRecon'>>,
+): MatchState {
+  return {
+    ...state,
+    players: { ...state.players, [id]: { ...state.players[id], ...patch } },
+  }
 }
 
-export function sortiesLeft(state: MatchState, airfieldId: string): number {
-  return COMBAT.sortiesPerAirfield - sortiesUsed(state, airfieldId)
+/** Combat missions this airfield has committed or flown this turn. */
+export function sortiesLeft(player: PlayerState, airfieldId: string): number {
+  const queued = player.queued.filter((q) => q.sourceId === airfieldId).length
+  const flown = player.flownThisTurn.filter((id) => id === airfieldId).length
+  return COMBAT.sortiesPerAirfield - queued - flown
 }
 
 
 /** Recon missions this airfield has committed or flown this turn. */
-export function reconSortiesLeft(state: MatchState, airfieldId: string): number {
-  const queued = state.queuedRecon.filter((q) => q.sourceId === airfieldId).length
-  const flown = state.reconLog.filter(
-    (r) => r.attacker === state.activePlayer && r.sourceId === airfieldId,
+export function reconSortiesLeft(
+  player: PlayerState,
+  airfieldId: string,
+): number {
+  const queued = player.queuedRecon.filter(
+    (q) => q.sourceId === airfieldId,
   ).length
+  const flown = player.scoutedThisTurn.filter((id) => id === airfieldId).length
   return COMBAT.reconSortiesPerAirfield - queued - flown
 }
 

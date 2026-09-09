@@ -10,6 +10,7 @@ import { StructurePalette } from './components/StructurePalette'
 import { isInRange, isInReconRange } from './game/combat'
 import { BOARDS, ECONOMY, structureDef } from './game/constants'
 import type { BoardId } from './game/constants'
+import type { StructureKind } from './game/types'
 
 import {
   actionPointsFor,
@@ -23,8 +24,15 @@ import {
 } from './game/state'
 import type { Match } from './match/types'
 
+/** Which panel this client is working in. Purely local — the opponent's screen
+ *  has its own, which is why it cannot live in the shared match state. */
+type PlanMode = 'build' | 'recon' | 'attack'
+
 export default function App({ match }: { match: Match }) {
   const { state, dispatch, you, yourTurn, waitingOn } = match
+  const [mode, setMode] = useState<PlanMode>('build')
+  const [selectedKind, setSelectedKind] = useState<StructureKind>('airfield')
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null)
   /**
    * Which situation an End Turn confirmation was given for. Held as a snapshot
    * rather than a flag so that any change — queueing, switching mode, the turn
@@ -37,14 +45,13 @@ export default function App({ match }: { match: Match }) {
   // turn it is — hot-seat is the special case where those always coincide.
   const me = state.players[you]
   const enemy = state.players[opponentOf(you)]
-  const attacking = state.mode === 'attack' && state.phase !== 'setup'
-  const scouting = state.mode === 'recon' && state.phase !== 'setup'
-  const viewingEnemy = state.view === 'enemy'
+  const attacking = mode === 'attack' && state.phase !== 'setup'
+  const scouting = mode === 'recon' && state.phase !== 'setup'
   const resolving = state.phase === 'resolving'
   /** Anything that would change the board is gated on holding the turn. */
   const canAct = yourTurn && !resolving
-  const pending = state.queued.length + state.queuedRecon.length
-  const endKey = `${state.activePlayer}|${state.turn}|${state.mode}|${pending}`
+  const pending = me.queued.length + me.queuedRecon.length
+  const endKey = `${state.activePlayer}|${state.turn}|${mode}|${pending}`
   const confirmEnd = confirmedFor === endKey
   const settingUp = state.phase === 'setup'
   const remaining = setupRemaining(me)
@@ -53,19 +60,19 @@ export default function App({ match }: { match: Match }) {
     () => me.structures.filter((s) => s.kind === 'airfield'),
     [me.structures],
   )
-  const source = airfields.find((s) => s.id === state.selectedSourceId) ?? null
+  const source = airfields.find((s) => s.id === selectedSourceId) ?? null
 
   const sorties = useMemo(
     () =>
-      Object.fromEntries(airfields.map((f) => [f.id, sortiesLeft(state, f.id)])),
-    [airfields, state],
+      Object.fromEntries(airfields.map((f) => [f.id, sortiesLeft(me, f.id)])),
+    [airfields, me],
   )
   const reconSorties = useMemo(
     () =>
       Object.fromEntries(
-        airfields.map((f) => [f.id, reconSortiesLeft(state, f.id)]),
+        airfields.map((f) => [f.id, reconSortiesLeft(me, f.id)]),
       ),
-    [airfields, state],
+    [airfields, me],
   )
 
   /** Cells the selected airfield can reach — further for recon than for bombs. */
@@ -174,22 +181,22 @@ export default function App({ match }: { match: Match }) {
           {!settingUp && (
             <div className="flex gap-1 rounded border border-slate-800 bg-slate-900 p-1">
               <Tab
-                active={state.mode === 'build'}
-                onClick={() => dispatch({ type: 'setMode', mode: 'build' })}
+                active={mode === 'build'}
+                onClick={() => setMode('build')}
                 disabled={!canAct}
               >
                 Build
               </Tab>
               <Tab
                 active={scouting}
-                onClick={() => dispatch({ type: 'setMode', mode: 'recon' })}
+                onClick={() => setMode('recon')}
                 disabled={!canAct}
               >
                 Recon
               </Tab>
               <Tab
                 active={attacking}
-                onClick={() => dispatch({ type: 'setMode', mode: 'attack' })}
+                onClick={() => setMode('attack')}
                 disabled={!canAct}
               >
                 Attack
@@ -200,9 +207,9 @@ export default function App({ match }: { match: Match }) {
           {settingUp ? (
             <SetupPanel
               player={me}
-              selected={state.selectedKind}
+              selected={selectedKind}
               remaining={remaining}
-              onSelect={(kind) => dispatch({ type: 'selectKind', kind })}
+              onSelect={setSelectedKind}
               onReady={() => dispatch({ type: 'finishSetup' })}
             />
           ) : scouting ? (
@@ -210,11 +217,11 @@ export default function App({ match }: { match: Match }) {
               board={board}
               airfields={airfields}
               reconSorties={reconSorties}
-              selectedSourceId={state.selectedSourceId}
-              queued={state.queuedRecon}
+              selectedSourceId={selectedSourceId}
+              queued={me.queuedRecon}
               results={outgoingRecon}
               resolving={!canAct}
-              onSelectSource={(id) => dispatch({ type: 'selectSource', id })}
+              onSelectSource={setSelectedSourceId}
               onRemoveTarget={(id) => dispatch({ type: 'unqueueRecon', id })}
             />
           ) : attacking ? (
@@ -222,25 +229,25 @@ export default function App({ match }: { match: Match }) {
               board={board}
               airfields={airfields}
               sorties={sorties}
-              selectedSourceId={state.selectedSourceId}
+              selectedSourceId={selectedSourceId}
               actionPoints={me.actionPoints}
-              queued={state.queued}
+              queued={me.queued}
               results={outgoing}
               resolving={!canAct}
-              onSelectSource={(id) => dispatch({ type: 'selectSource', id })}
+              onSelectSource={setSelectedSourceId}
               onRemoveTarget={(id) => dispatch({ type: 'unqueueStrike', id })}
             />
           ) : (
             <StructurePalette
-              selected={state.selectedKind}
-              onSelect={(kind) => dispatch({ type: 'selectKind', kind })}
+              selected={selectedKind}
+              onSelect={setSelectedKind}
               placed={me.structures}
               budget={me.budget}
-              disabled={viewingEnemy || !canAct}
+              disabled={!canAct}
             />
           )}
 
-          {!settingUp && (state.queued.length > 0 || state.queuedRecon.length > 0) && (
+          {!settingUp && pending > 0 && (
             <button
               type="button"
               disabled={!canAct}
@@ -249,9 +256,7 @@ export default function App({ match }: { match: Match }) {
             >
               {resolving
                 ? 'Operations under way…'
-                : `Commit ${state.queuedRecon.length + state.queued.length} operation${
-                    state.queuedRecon.length + state.queued.length === 1 ? '' : 's'
-                  }`}
+                : `Commit ${pending} operation${pending === 1 ? '' : 's'}`}
             </button>
           )}
 
@@ -284,7 +289,7 @@ export default function App({ match }: { match: Match }) {
         <div className="flex flex-col items-center gap-3">
           <MapStack
             board={board}
-            mode={state.mode}
+            mode={mode}
             own={{
               structures: me.structures,
               ruins: me.ruins,
@@ -294,19 +299,22 @@ export default function App({ match }: { match: Match }) {
             interceptions={me.interceptions}
             reachable={attacking || scouting ? reachable : null}
             reachRadius={scouting ? board.reconRange : board.bomberRange}
-            queued={state.queued}
-            queuedRecon={state.queuedRecon}
+            queued={me.queued}
+            queuedRecon={me.queuedRecon}
             strikes={outgoing}
             flights={outgoingRecon}
-            selectedSourceId={state.selectedSourceId}
-            selectedKind={state.selectedKind}
-            previewCode={attacking ? null : structureDef(state.selectedKind).code}
+            selectedSourceId={selectedSourceId}
+            selectedKind={selectedKind}
+            previewCode={attacking ? null : structureDef(selectedKind).code}
             interactive={canAct}
             onEnemyCellClick={(col, row) => {
               // Repeat clicks stack operations on one cell; removal is done
               // from the plan lists, so a defended target can be hit twice.
-              if (scouting) dispatch({ type: 'queueRecon', col, row })
-              else if (attacking) dispatch({ type: 'queueStrike', col, row })
+              if (!selectedSourceId) return
+              if (scouting)
+                dispatch({ type: 'queueRecon', sourceId: selectedSourceId, col, row })
+              else if (attacking)
+                dispatch({ type: 'queueStrike', sourceId: selectedSourceId, col, row })
             }}
             onClearInterceptions={() =>
               dispatch({ type: 'clearInterceptions' })
@@ -316,7 +324,8 @@ export default function App({ match }: { match: Match }) {
               const existing = structureAtOwnCell(col, row)
               if (existing)
                 dispatch({ type: 'removeStructure', id: existing.id })
-              else dispatch({ type: 'placeStructure', col, row })
+              else
+                dispatch({ type: 'placeStructure', kind: selectedKind, col, row })
             }}
           />
         </div>
@@ -342,7 +351,7 @@ export default function App({ match }: { match: Match }) {
                 label="Bomber reach"
                 value={`${board.bomberRange} cells`}
               />
-              <Row label="Targets marked" value={String(state.queued.length)} />
+              <Row label="Targets marked" value={String(me.queued.length)} />
               <Row label="Strikes flown" value={String(outgoing.length)} />
             </dl>
           </div>

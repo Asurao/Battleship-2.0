@@ -90,11 +90,11 @@ export class MatchRoom extends DurableObject {
       return this.send(ws, { t: 'error', reason: 'Not your turn' })
     }
 
-    await this.apply(state, action)
+    await this.apply(state, action, meta.seat)
   }
 
-  private async apply(state: MatchState, action: Action) {
-    let next = reducer(state, action)
+  private async apply(state: MatchState, action: Action, actor: PlayerId) {
+    let next = reducer(state, action, actor)
     // There is no device to hand over online, so the pass screen has nothing to
     // say. Step straight through it to the incoming player's briefing.
     if (next.phase === 'pass') next = reducer(next, { type: 'confirmPass' })
@@ -112,7 +112,7 @@ export class MatchRoom extends DurableObject {
     setTimeout(async () => {
       const state = await this.ctx.storage.get<MatchState>('state')
       if (!state || state.phase !== 'resolving') return
-      await this.apply(state, { type: 'resolveNext' })
+      await this.apply(state, { type: 'resolveNext' }, state.activePlayer)
     }, RESOLVE_INTERVAL_MS)
   }
 

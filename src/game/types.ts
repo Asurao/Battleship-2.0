@@ -106,6 +106,20 @@ export interface PlayerState {
   structures: Structure[]
   ruins: Ruin[]
   craters: Crater[]
+  /**
+   * Orders this player has marked but not yet committed. Per-player rather than
+   * global because they are only meaningful to their owner — and because
+   * simultaneous turns will have both players holding orders at once.
+   */
+  queued: QueuedStrike[]
+  queuedRecon: QueuedRecon[]
+  /**
+   * Airfields that have already flown this turn, by id. Kept per player and
+   * cleared when their turn opens, so sortie limits survive both players
+   * holding orders at once.
+   */
+  flownThisTurn: string[]
+  scoutedThisTurn: string[]
   /** This player's picture of the ENEMY grid, built up by shooting at it. */
   known: KnownCell[]
   /**
@@ -147,30 +161,15 @@ export type Phase =
   | 'pass'
   | 'gameover'
 
-/** Which map the active player is currently looking at. */
-export type MapView = 'own' | 'enemy'
-
-/** Build places structures; recon scouts; attack launches strikes. */
-export type PlanMode = 'build' | 'recon' | 'attack'
-
 export interface MatchState {
   /** Chosen at match start; changing it mid-match would invalidate placements. */
   boardId: BoardId
   turn: number
   activePlayer: PlayerId
   phase: Phase
-  view: MapView
-  mode: PlanMode
-  selectedKind: StructureKind
-  /** Airfield the next strike launches from. */
-  selectedSourceId: string | null
   players: Record<PlayerId, PlayerState>
   /** Whether the hand-off screen was reached from setup or from a played turn. */
   passOrigin: 'setup' | 'turn'
-  /** Targets marked but not yet fired. Action points are reserved on queueing. */
-  queued: QueuedStrike[]
-  /** Recon flights planned this turn. They resolve before any strike does. */
-  queuedRecon: QueuedRecon[]
   /** Strikes resolved this turn, newest last. Drives briefings and overlays. */
   log: Strike[]
   /** Recon flights resolved this turn. */
