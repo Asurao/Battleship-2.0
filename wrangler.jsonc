@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "battleship-20",
+  "name": "asurao",
   "main": "worker/index.ts",
   "compatibility_date": "2026-09-01",
   // Static assets are served first; anything unmatched falls through to the

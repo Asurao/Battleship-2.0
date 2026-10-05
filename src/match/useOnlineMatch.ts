@@ -123,8 +123,12 @@ export function useOnlineMatch(code: string, boardId?: BoardId): Match | null {
     you: net.you,
     yourTurn,
     status: net.status,
-    waitingOn: !net.opponentHere
-      ? 'Waiting for your opponent to join…'
+    // A dropped connection disables every control, so say why — otherwise the
+    // game just looks frozen.
+    waitingOn: net.status === 'reconnecting'
+      ? 'Connection lost — reconnecting…'
+      : !net.opponentHere
+        ? 'Waiting for your opponent to join…'
       : deploying
         ? me.setupDone
           ? 'Waiting for your opponent to finish deploying…'
